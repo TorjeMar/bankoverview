@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dev Dashboard</title>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --border: #ddd8ca;
+    --ink: #1c2024;
+    --ink-dim: #6b6f75;
+    --accent: #236b66;
+    --accent-soft: #e4eeec;
+    --good: #1e7a46;
+    --good-soft: #e4f1e7;
+    --bad: #a23b2e;
+    --bad-soft: #f5e5e1;
+    --mono: ui-monospace, "SF Mono", "IBM Plex Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    line-height: 1.5;
+  }
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header p { margin: 0; color: var(--ink-dim); font-size: 13.5px; }
+
+  .tag-section { display: flex; flex-direction: column; gap: 10px; }
+  .tag-heading {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .op-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .method {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: white;
+  }
+  .method.get { background: #3b5aa6; }
+  .method.post { background: #1e6f52; }
+  .method.put, .method.patch { background: #a2621f; }
+  .method.delete { background: #a23b2e; }
+  .op-path { font-family: var(--mono); font-size: 13px; }
+  .op-summary { font-size: 12.5px; color: var(--ink-dim); }
+
+  .params { display: flex; flex-direction: column; gap: 6px; }
+  .param-row { display: flex; align-items: center; gap: 8px; }
+  .param-label { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); width: 110px; flex-shrink: 0; }
+
+  input, textarea {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--ink);
+    flex: 1;
+  }
+  textarea { min-height: 60px; resize: vertical; }
+  input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    align-self: flex-start;
+  }
+  button:hover { opacity: 0.9; }
+  button.ghost { background: transparent; color: var(--accent); }
+
+  #log {
+    background: #1c2024;
+    color: #d8d4c8;
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    max-height: 360px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #log .entry { border-bottom: 1px solid #2b313a; padding-bottom: 10px; }
+  #log .entry:last-child { border-bottom: none; padding-bottom: 0; }
+  #log .method-ok { color: #6fc7bc; }
+  #log .status-ok { color: #5fbf87; }
+  #log .status-err { color: #e17b65; }
+  #log .goto-btn {
+    background: #6fc7bc;
+    border: none;
+    color: #0f1512;
+    font-size: 11px;
+    padding: 4px 10px;
+    margin-top: 6px;
+  }
+
+  .loading, .error-banner { font-size: 13px; color: var(--ink-dim); }
+  .error-banner { color: var(--bad); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>Personal Finance API — Dev Dashboard</h1>
+    <p>
+      Auto-generated from <code>/openapi.json</code> — add a new endpoint to
+      the backend and it shows up here on reload, no HTML changes needed.
+    </p>
+  </header>
+
+  <div id="explorer" class="loading">Loading endpoints…</div>
+
+  <div class="tag-section">
+    <span class="tag-heading">Request log</span>
+    <div id="log"><div class="entry">Nothing yet — try an endpoint above.</div></div>
+  </div>
+
+</div>
+
+<script>
+  const API_PREFIX = "/api/v1";
+  const logEl = document.getElementById("log");
+
+  function logEntry(method, url, response, body) {
+    const entry = document.createElement("div");
+    entry.className = "entry";
+    const statusClass = response.ok ? "status-ok" : "status-err";
+    const authUrl = body && typeof body === "object" ? body.authorization_url : null;
+
+    entry.innerHTML = `<span class="method-ok">${method}</span> ${url} — <span class="${statusClass}">${response.status}</span>\n${JSON.stringify(body, null, 2)}`;
+
+    if (authUrl) {
+      const btn = document.createElement("button");
+      btn.className = "goto-btn";
+      btn.textContent = "Go there →";
+      btn.onclick = () => { window.location.href = authUrl; };
+      entry.appendChild(btn);
+    }
+
+    logEl.prepend(entry);
+  }
+
+  async function sendRequest(method, url, hasBody, bodyText) {
+    const options = { method, credentials: "include" };
+    if (hasBody) {
+      options.headers = { "Content-Type": "application/json" };
+      options.body = bodyText || "{}";
+    }
+    const response = await fetch(url, options);
+    let body;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    logEntry(method, url, response, body);
+  }
+
+  function paramInput(param) {
+    const row = document.createElement("div");
+    row.className = "param-row";
+    const label = document.createElement("span");
+    label.className = "param-label";
+    label.textContent = param.name + (param.required ? "*" : "");
+    const input = document.createElement("input");
+    input.placeholder = param.in;
+    input.dataset.name = param.name;
+    input.dataset.in = param.in;
+    row.appendChild(label);
+    row.appendChild(input);
+    return { row, input };
+  }
+
+  function buildOpCard(path, method, op) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    const head = document.createElement("div");
+    head.className = "op-head";
+    head.innerHTML = `
+      <span class="method ${method}">${method.toUpperCase()}</span>
+      <span class="op-path">${path}</span>
+    `;
+    card.appendChild(head);
+
+    if (op.summary || op.description) {
+      const summary = document.createElement("div");
+      summary.className = "op-summary";
+      summary.textContent = op.summary || op.description;
+      card.appendChild(summary);
+    }
+
+    const relevantParams = (op.parameters || []).filter(
+      (p) => p.in === "path" || p.in === "query"
+    );
+
+    const paramsWrap = document.createElement("div");
+    paramsWrap.className = "params";
+    const inputs = relevantParams.map((p) => {
+      const { row, input } = paramInput(p);
+      paramsWrap.appendChild(row);
+      return input;
+    });
+    if (relevantParams.length > 0) card.appendChild(paramsWrap);
+
+    const hasBody = !!op.requestBody;
+    let bodyTextarea = null;
+    if (hasBody) {
+      bodyTextarea = document.createElement("textarea");
+      bodyTextarea.value = "{}";
+      card.appendChild(bodyTextarea);
+    }
+
+    const sendBtn = document.createElement("button");
+    sendBtn.textContent = "Send";
+    sendBtn.onclick = () => {
+      let url = API_PREFIX + path;
+      const queryParts = [];
+
+      inputs.forEach((input) => {
+        const value = input.value.trim();
+        if (!value) return;
+        if (input.dataset.in === "path") {
+          url = url.replace(`{${input.dataset.name}}`, encodeURIComponent(value));
+        } else {
+          queryParts.push(`${input.dataset.name}=${encodeURIComponent(value)}`);
+        }
+      });
+
+      if (queryParts.length > 0) url += "?" + queryParts.join("&");
+
+      sendRequest(method.toUpperCase(), url, hasBody, bodyTextarea?.value);
+    };
+    card.appendChild(sendBtn);
+
+    return card;
+  }
+
+  async function buildExplorer() {
+    const explorerEl = document.getElementById("explorer");
+
+    let schema;
+    try {
+      schema = await (await fetch("/openapi.json")).json();
+    } catch (err) {
+      explorerEl.className = "error-banner";
+      explorerEl.textContent = "Could not load /openapi.json — is the server running?";
+      return;
+    }
+
+    const sections = new Map();
+
+    for (const [path, methods] of Object.entries(schema.paths)) {
+      if (!path.startsWith(API_PREFIX)) continue;
+      const relativePath = path.slice(API_PREFIX.length) || "/";
+
+      for (const [method, op] of Object.entries(methods)) {
+        const tag = (op.tags && op.tags[0]) || "other";
+        if (!sections.has(tag)) sections.set(tag, []);
+        sections.get(tag).push({ path: relativePath, method, op });
+      }
+    }
+
+    explorerEl.innerHTML = "";
+    explorerEl.className = "";
+
+    for (const [tag, ops] of sections) {
+      const section = document.createElement("div");
+      section.className = "tag-section";
+      const heading = document.createElement("span");
+      heading.className = "tag-heading";
+      heading.textContent = tag;
+      section.appendChild(heading);
+
+      ops.forEach(({ path, method, op }) => {
+        section.appendChild(buildOpCard(path, method, op));
+      });
+
+      explorerEl.appendChild(section);
+    }
+  }
+
+  buildExplorer();
+</script>
+</body>
+</html>
