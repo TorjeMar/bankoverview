@@ -38,3 +38,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# Personal notes/reports (not for the repo)
+notes/

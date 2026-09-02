@@ -3,12 +3,15 @@ from pathlib import Path
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = BACKEND_ROOT.parent
+
 
 class Settings(BaseSettings):
     """Settings for the Enable Banking application."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BACKEND_ROOT / ".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -19,10 +22,14 @@ class Settings(BaseSettings):
     aspsp_name: str
     aspsp_country: str
     callback_url: AnyHttpUrl
+    database_url: str
 
     @field_validator("key_path")
     @classmethod
     def validate_key_path(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            value = REPO_ROOT / value
+
         if not value.is_file():
             raise ValueError(
                 f"Enable Banking private key was not found: {value}"
@@ -49,6 +56,13 @@ class Settings(BaseSettings):
         if not value:
             raise ValueError("Value must not be empty")
 
+        return value
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value: str) -> str:
+        if not value.startswith("postgresql+asyncpg://"):
+            raise ValueError("Database URL must be a valid PostgreSQL URL")
         return value
 
 
