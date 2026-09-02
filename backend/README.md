@@ -8,7 +8,9 @@ FastAPI backend for a personal finance dashboard using Open Banking (via
 - FastAPI backend, organized by feature (`auth`, `connections`, `accounts`)
 - Enable Banking OAuth flow with RS256 JWT authentication
 - HTTP-only session cookies for the application's own auth
-- Postgres persistence for bank connections, managed with Alembic migrations
+- Postgres persistence for users, banks, bank connections, and bank accounts
+  (`users` / `banks` / `bank_connections` / `bank_accounts`), managed with
+  Alembic migrations
 - In-memory storage for short-lived state (app sessions, pending authorizations)
 - Environment-based configuration using Pydantic Settings
 - Auto-generated dev dashboard at `/dev` for exercising every endpoint
@@ -21,17 +23,16 @@ FastAPI backend for a personal finance dashboard using Open Banking (via
 backend
 ├── src/app
 │   ├── api
-│   │   └── router.py           # mounts feature routers under /api/v1
+│   │   └── router.py              # mounts feature routers under /api/v1
 │   ├── core
-│   │   ├── config.py            # Settings (env vars)
-│   │   └── exceptions.py
-│   ├── database.py               # SQLAlchemy engine/session, Base, in-memory stores
+│   │   └── config.py              # Settings (env vars)
+│   ├── database.py                # SQLAlchemy engine/session, Base, in-memory stores
 │   ├── features
-│   │   ├── auth                  # login, session cookie, get_current_user
-│   │   ├── connections           # bank authorization start/callback, BankConnection
-│   │   └── accounts               # accounts, balances, transactions
+│   │   ├── auth                   # login, session cookie, get_current_user, UserModel
+│   │   ├── connections            # bank auth start/callback, BankConnectionModel, BankModel
+│   │   └── accounts                # accounts/balances/transactions, BankAccountModel, TransactionModel
 │   ├── integrations
-│   │   └── enable_banking         # Enable Banking API client, schemas, exceptions
+│   │   └── enable_banking         # Enable Banking API client, schemas, error translation
 │   ├── static
 │   │   └── index.html             # dev dashboard, reads /openapi.json
 │   └── main.py
@@ -162,15 +163,22 @@ Enable Banking redirects the user back with `state` and `code`. The application:
 
 - validates the authorization state
 - exchanges the authorization code
-- persists the bank connection to Postgres
+- resolves (or creates) the `Bank` row and persists the `BankConnection`
+- persists one `BankAccount` row per account returned in the session
+  (IBAN, name, currency, cash account type, servicer BIC — all available
+  from the session-creation response, no extra API call needed)
 
 ---
 
 ### 5. Retrieve accounts, balances and transactions
 
-Once a bank connection exists, the accounts endpoints use it to talk to
-Enable Banking directly (accounts and their transactions are not persisted —
-only the connection is).
+`GET /accounts/{id}`, `/balances`, and `/transactions` all check the
+requested `account_id` against the persisted `BankAccount` rows before
+doing anything else, so one user can't query another user's account by
+guessing an ID. `GET /accounts` (the list) and the actual account/balance/
+transaction data itself are still fetched live from Enable Banking on every
+request — only the connection and account *identities* are persisted so
+far, not balances or transaction history (see "Future Improvements").
 
 ---
 
@@ -185,26 +193,40 @@ only the connection is).
 | GET | `/api/v1/accounts/{account_id}` | Get account details |
 | GET | `/api/v1/accounts/{account_id}/balances` | Get account balances |
 | GET | `/api/v1/accounts/{account_id}/transactions` | List account transactions |
-| GET | `/api/v1/accounts/{account_id}/transactions/{transaction_id}` | Get a single transaction |
+| GET | `/api/v1/accounts/{account_id}/transactions/{transaction_id}` | Get a single transaction — **currently broken**, see Limitations |
 
 ---
 
 ## Current Limitations
 
 - App sessions and pending bank authorizations are still in-memory and are
-  lost on restart (bank connections are the only thing persisted to Postgres).
+  lost on restart. Users, banks, bank connections, and bank accounts persist
+  to Postgres.
+- `/login` derives a user's UUID deterministically from whatever string it's
+  given (`uuid5` against a fixed namespace) rather than real authentication —
+  there's no password, no registration, and no way to prove identity yet.
 - Only the current user's active bank connection is used — no support for
   multiple simultaneous connections yet.
-- Accounts, balances and transactions are fetched live from Enable Banking
-  on every request rather than cached/persisted locally.
+- Balances and transactions are fetched live from Enable Banking on every
+  request rather than cached/persisted locally. Enable Banking/DNB also rate
+  limits unattended account access to a few calls per day per connection, so
+  repeated live calls can exhaust that quota.
+- There's no endpoint to fetch a single transaction by ID that actually
+  works — DNB doesn't implement one at the ASPSP level (confirmed via a
+  `501 Not Implemented` relayed through Enable Banking), so this needs to be
+  solved by persisting transactions locally and looking them up there
+  instead (see `notes/plans/transaction-sync.md`, not committed).
 
 ---
 
 ## Future Improvements
 
 - Persist app sessions and pending authorizations (or move them to Redis)
+- Real authentication to replace the deterministic-UUID `/login` stand-in
 - Support multiple bank connections per user
 - Refresh consent before it expires
-- Cache/persist accounts and transactions
+- Sync and persist transactions locally (full backfill + periodic re-sync),
+  which also fixes single-transaction lookup and reduces live API calls
+  against Enable Banking's rate limit
 - Frontend
 - Docker deployment for the API itself

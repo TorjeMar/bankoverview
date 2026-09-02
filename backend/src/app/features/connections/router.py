@@ -172,5 +172,7 @@ async def callback(
 
     return CallbackResponse(
         message="Bank connection established successfully",
-        connection=to_bank_connection_response(connection),
+        connection=to_bank_connection_response(
+            connection, account_count=len(session.accounts)
+        ),
     )

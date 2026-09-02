@@ -2,6 +2,9 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.features.accounts import repository as accounts_repository
+from app.features.accounts.models import BankAccountModel
 from app.features.connections import repository
 from app.features.connections.models import BankConnectionModel
 from app.features.connections.schemas import BankConnectionResponse
@@ -13,8 +16,15 @@ async def save_bank_connection(
     user_id: str,
     session: CreatedEnableBankingSession,
 ) -> BankConnectionModel:
+    bank = await repository.get_or_create_bank(
+        db,
+        name=settings.aspsp_name,
+        country_code=settings.aspsp_country,
+    )
+
     connection = BankConnectionModel(
         user_id=user_id,
+        bank_id=bank.bank_id,
         enable_banking_session_id=session.session_id,
         status="active",
         created_at=datetime.now(UTC),
@@ -23,23 +33,33 @@ async def save_bank_connection(
             if session.access is not None
             else None
         ),
-        aspsp=session.aspsp,
-        account_ids=[
-            account.uid
-            for account in session.accounts
-        ],
     )
+    connection = await repository.save(db, connection)
 
-    return await repository.save(db, connection)
+    accounts = [
+        BankAccountModel(
+            account_id=account.uid,
+            connection_id=connection.connection_id,
+            iban=account.account_id.iban,
+            name=account.name,
+            currency=account.currency,
+            cash_account_type=account.cash_account_type,
+            bic=account.account_servicer.bic_fi if account.account_servicer else None,
+        )
+        for account in session.accounts
+    ]
+    await accounts_repository.save_many_bank_accounts(db, accounts)
+
+    return connection
 
 
 def to_bank_connection_response(
     connection: BankConnectionModel,
+    account_count: int,
 ) -> BankConnectionResponse:
     return BankConnectionResponse(
         status=connection.status,
         created_at=connection.created_at,
         valid_until=connection.valid_until,
-        aspsp=connection.aspsp,
-        account_count=len(connection.account_ids),
+        account_count=account_count,
     )

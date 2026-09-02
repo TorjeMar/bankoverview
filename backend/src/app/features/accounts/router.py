@@ -3,19 +3,20 @@ from typing import Annotated
 import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.database import get_db
+from app.features.accounts import repository
 from app.features.accounts.schemas import (
     AccountBalanceResponse,
     AccountDetailsResponse,
     AccountsResponse,
-    AccountTransactionResponse,
     AccountTransactionsResponse,
 )
 from app.features.accounts.service import (
     to_account_balance_response,
     to_account_details_response,
-    to_account_transaction_response,
     to_account_transactions_response,
     to_get_accounts_response,
 )
@@ -24,7 +25,6 @@ from app.features.connections.router import get_bank_connection
 from app.integrations.enable_banking.client import (
     retrieve_account_balances,
     retrieve_account_details,
-    retrieve_account_transaction,
     retrieve_account_transactions,
     retrieve_enable_banking_session,
 )
@@ -59,14 +59,18 @@ def get_accounts(
     response_model=AccountDetailsResponse,
     summary="Get account details",
 )
-def get_account_details(
+async def get_account_details(
     account_id: str,
     connection: Annotated[
         BankConnectionModel,
         Depends(get_bank_connection),
     ],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountDetailsResponse:
-    if account_id not in connection.account_ids:
+    account_link = await repository.get_account_for_connection(
+        db, connection.connection_id, account_id
+    )
+    if account_link is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Account not found",
@@ -88,14 +92,18 @@ def get_account_details(
     response_model=AccountBalanceResponse,
     summary="Get account balances",
 )
-def get_account_balance(
+async def get_account_balance(
     account_id: str,
     connection: Annotated[
         BankConnectionModel,
         Depends(get_bank_connection),
     ],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountBalanceResponse:
-    if account_id not in connection.account_ids:
+    account_link = await repository.get_account_for_connection(
+        db, connection.connection_id, account_id
+    )
+    if account_link is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Account not found",
@@ -117,14 +125,18 @@ def get_account_balance(
     response_model=AccountTransactionsResponse,
     summary="List account transactions",
 )
-def get_account_transactions(
+async def get_account_transactions(
     account_id: str,
     connection: Annotated[
         BankConnectionModel,
         Depends(get_bank_connection),
     ],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountTransactionsResponse:
-    if account_id not in connection.account_ids:
+    account_link = await repository.get_account_for_connection(
+        db, connection.connection_id, account_id
+    )
+    if account_link is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Account not found",

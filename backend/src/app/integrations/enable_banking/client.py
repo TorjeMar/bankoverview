@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import jwt as pyjwt
@@ -27,7 +27,7 @@ def load_private_key(key_path: Path) -> str:
 def create_enable_banking_headers(
     settings: Settings,
 ) -> dict[str, str]:
-    issued_at = int(datetime.now(timezone.utc).timestamp())
+    issued_at = int(datetime.now(UTC).timestamp())
     private_key = load_private_key(settings.key_path)
 
     payload = {
@@ -61,7 +61,7 @@ def create_bank_authorization(
     request_body = {
         "access": {
             "valid_until": (
-                datetime.now(timezone.utc) + timedelta(days=10)
+                datetime.now(UTC) + timedelta(days=10)
             ).isoformat()
         },
         "aspsp": {

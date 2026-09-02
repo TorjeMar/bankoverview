@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -19,7 +18,6 @@ class BankConnectionResponse(BaseModel):
     status: str
     created_at: datetime
     valid_until: datetime | None = None
-    aspsp: dict[str, Any] | None = None
     account_count: int
 
 
