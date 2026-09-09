@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import jwt as pyjwt
@@ -151,11 +151,17 @@ def retrieve_account_balances(
 def retrieve_account_transactions(
     settings: Settings,
     account_id: str,
+    continuation_key: str | None = None,
+    date_from: date | None = None,
 ) -> EnableBankingTransactions:
     response = requests.get(
         f"{get_api_base_url(settings)}/accounts/{account_id}/transactions",
         headers=create_enable_banking_headers(settings),
         timeout=30,
+        params={
+            "continuation_key": continuation_key,
+            "date_from": date_from.isoformat() if date_from else None,
+        },
     )
     response.raise_for_status()
     

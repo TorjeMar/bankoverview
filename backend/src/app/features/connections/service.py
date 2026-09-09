@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.features.accounts import repository as accounts_repository
 from app.features.accounts.models import BankAccountModel
+from app.features.accounts.service import sync_transactions_for_account
 from app.features.connections import repository
 from app.features.connections.models import BankConnectionModel
 from app.features.connections.schemas import BankConnectionResponse
@@ -48,7 +49,12 @@ async def save_bank_connection(
         )
         for account in session.accounts
     ]
+
     await accounts_repository.save_many_bank_accounts(db, accounts)
+
+    for account in accounts:
+        await sync_transactions_for_account(db, account.account_id, since=None)
+    
 
     return connection
 

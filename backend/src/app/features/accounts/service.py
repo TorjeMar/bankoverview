@@ -1,3 +1,12 @@
+from datetime import date
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.features.accounts import repository
+from app.features.accounts.models import TransactionModel
 from app.features.accounts.schemas import (
     AccountBalanceResponse,
     AccountDetailsResponse,
@@ -5,11 +14,11 @@ from app.features.accounts.schemas import (
     AccountTransactionResponse,
     AccountTransactionsResponse,
 )
+from app.integrations.enable_banking.client import retrieve_account_transactions
 from app.integrations.enable_banking.schemas import (
     EnableBankingAccount,
     EnableBankingBalance,
     EnableBankingTransaction,
-    EnableBankingTransactions,
     RetrievedEnableBankingSession,
 )
 
@@ -46,20 +55,27 @@ def to_account_balance_response(
 ) -> AccountBalanceResponse:
     return AccountBalanceResponse(
         account_id=account_id,
-        balances=balance.balances or [],
-        balances_type=balance.balance_type,
-        last_changed_date_time=balance.last_changed_date_time,
-        refrenced_date=balance.refrenced_date,
-        last_committed_transaction=balance.last_committed_transaction,
+        balances=balance.balances or []
     )
 
 def to_account_transactions_response(
-    account_id: str, transactions: EnableBankingTransactions
+    account_id: str, transactions: list[TransactionModel]
 ) -> AccountTransactionsResponse:
     return AccountTransactionsResponse(
         account_id=account_id,
-        transactions=transactions.transactions or [],
-        continuation_key=transactions.continuation_key,
+        transactions=[
+            {
+                "transaction_id": t.transaction_id,
+                "amount": t.amount,
+                "currency": t.currency,
+                "credit_debit_indicator": t.credit_debit_indicator,
+                "status": t.status,
+                "booking_date": t.booking_date,
+                "value_date": t.value_date,
+                "remittance_information": t.remittance_information,
+            }
+            for t in transactions
+        ],
     )
 
 def to_account_transaction_response(
@@ -89,3 +105,37 @@ def to_account_transaction_response(
         debtor_account_additional_identification=transaction.debtor_account_additional_identification,
         creditor_account_additional_identification=transaction.creditor_account_additional_identification
     )
+
+def to_transaction_model(account_id: str, raw: dict[str, Any]) -> dict[str, Any]:
+    amount = raw["transaction_amount"]
+    return {
+        "account_id": account_id,
+        "transaction_id": raw["transaction_id"],
+        "amount": Decimal(amount["amount"]),
+        "currency": amount["currency"],
+        "credit_debit_indicator": raw["credit_debit_indicator"],
+        "status": raw["status"],
+        "booking_date": (
+            date.fromisoformat(raw["booking_date"]) if raw.get("booking_date") else None
+        ),
+        "value_date": date.fromisoformat(raw["value_date"]) if raw.get("value_date") else None,
+        "remittance_information": " / ".join(raw.get("remittance_information") or []),
+        "details": raw,
+    }
+
+async def sync_transactions_for_account(
+    db: AsyncSession, account_id: str, since: date | None = None
+) -> None:
+    continuation_key = None
+    while True:
+        page = retrieve_account_transactions(
+            settings=settings,
+            account_id=account_id,
+            continuation_key=continuation_key,
+            date_from=since,
+        )
+        rows = [to_transaction_model(account_id, t) for t in (page.transactions or [])]
+        await repository.upsert_many(db, rows)
+        if not page.continuation_key:
+            break
+        continuation_key = page.continuation_key

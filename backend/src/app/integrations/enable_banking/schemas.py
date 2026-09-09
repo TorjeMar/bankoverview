@@ -67,10 +67,6 @@ class EnableBankingBalance(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     balances: list[dict[str, Any]] | None = None
-    balance_type: str | None = None
-    last_changed_date_time: datetime | None = None
-    refrenced_date: datetime | None = None
-    last_committed_transaction: str | None = None
 
 class EnableBankingTransactions(BaseModel):
     model_config = ConfigDict(extra="allow")

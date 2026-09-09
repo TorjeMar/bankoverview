@@ -1,3 +1,4 @@
+from datetime import date, timedelta
 from typing import Annotated
 
 import requests
@@ -15,6 +16,7 @@ from app.features.accounts.schemas import (
     AccountTransactionsResponse,
 )
 from app.features.accounts.service import (
+    sync_transactions_for_account,
     to_account_balance_response,
     to_account_details_response,
     to_account_transactions_response,
@@ -25,7 +27,6 @@ from app.features.connections.router import get_bank_connection
 from app.integrations.enable_banking.client import (
     retrieve_account_balances,
     retrieve_account_details,
-    retrieve_account_transactions,
     retrieve_enable_banking_session,
 )
 from app.integrations.enable_banking.exceptions import to_enable_banking_http_exception
@@ -142,12 +143,7 @@ async def get_account_transactions(
             detail="Account not found",
         )
 
-    try:
-        transactions = retrieve_account_transactions(
-            settings=settings,
-            account_id=account_id,
-        )
-    except (requests.RequestException, ValidationError) as exc:
-        raise to_enable_banking_http_exception(exc) from exc
+    await sync_transactions_for_account(db, account_id, since=date.today() - timedelta(days=7))
 
+    transactions = await repository.get_transactions_for_account(db, account_id)
     return to_account_transactions_response(account_id, transactions)

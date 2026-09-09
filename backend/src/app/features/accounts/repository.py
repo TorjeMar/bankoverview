@@ -1,6 +1,8 @@
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.accounts.models import BankAccountModel, TransactionModel
@@ -47,3 +49,18 @@ async def get_transactions_for_account(db: AsyncSession, account_id: str) -> lis
         select(TransactionModel).where(TransactionModel.account_id == account_id)
     )
     return list(result.scalars().all())
+
+async def upsert_many(db: AsyncSession, transactions: list[dict[str, Any]]) -> None:
+    if not transactions:
+        return
+    stmt = insert(TransactionModel).values(transactions)
+    update_columns = set(TransactionModel.__table__.columns.keys()) - {
+        "id", "account_id", "transaction_id"
+    }
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["account_id", "transaction_id"],
+        set_={col: stmt.excluded[col] for col in update_columns},
+    )
+    await db.execute(stmt)
+    await db.commit()
+

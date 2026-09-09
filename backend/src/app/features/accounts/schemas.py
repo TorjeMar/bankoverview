@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -26,15 +26,12 @@ class AccountDetailsResponse(BaseModel):
 class AccountBalanceResponse(BaseModel):
     account_id: str | None = None
     balances: list[dict[str, Any]] = Field(default_factory=list)
-    balances_type: str | None = None
-    last_changed_date_time: datetime | None = None
-    refrenced_date: date | None = None
-    last_committed_transaction: str | None = None
+
 
 class AccountTransactionsResponse(BaseModel):
     account_id: str | None = None
     transactions: list[dict[str, Any]] = Field(default_factory=list)
-    continuation_key: str | None = None
+
 
 class AccountTransactionResponse(BaseModel):
     account_id: str | None = None
