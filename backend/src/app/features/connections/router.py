@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.database import get_db, pending_authorizations
+from app.features.accounts import repository as accounts_repository
 from app.features.auth.router import get_current_user
 from app.features.auth.schemas import UserSession
 from app.features.connections import repository
@@ -19,6 +20,7 @@ from app.features.connections.schemas import (
     StartAuthorizationResponse,
 )
 from app.features.connections.service import (
+    revoke_bank_connection,
     save_bank_connection,
     to_bank_connection_response,
 )
@@ -175,4 +177,21 @@ async def callback(
         connection=to_bank_connection_response(
             connection, account_count=len(session.accounts)
         ),
+    )
+
+@router.delete(
+    "/revoke",
+    response_model=CallbackResponse,
+    summary="Revoke bank connection",
+)
+async def revoke_connection(
+    connection: Annotated[BankConnectionModel, Depends(get_bank_connection)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> CallbackResponse:
+    accounts = await accounts_repository.get_for_connection(db, connection.connection_id)
+    await revoke_bank_connection(db, connection)
+
+    return CallbackResponse(
+        message="Bank connection revoked successfully",
+        connection=to_bank_connection_response(connection, account_count=len(accounts)),
     )

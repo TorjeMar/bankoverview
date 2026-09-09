@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,3 +36,22 @@ async def get_or_create_bank(db: AsyncSession, name: str, country_code: str) -> 
         await db.commit()
         await db.refresh(bank)
     return bank
+
+async def revoke_connection(db: AsyncSession, connection: BankConnectionModel) -> None:
+    connection.status = "revoked"
+    await db.commit()
+
+
+async def supersede_active_connections(
+    db: AsyncSession, user_id: str, except_connection_id: UUID
+) -> None:
+    result = await db.execute(
+        select(BankConnectionModel).where(
+            BankConnectionModel.user_id == user_id,
+            BankConnectionModel.status == "active",
+            BankConnectionModel.connection_id != except_connection_id,
+        )
+    )
+    for connection in result.scalars().all():
+        connection.status = "superseded"
+    await db.commit()

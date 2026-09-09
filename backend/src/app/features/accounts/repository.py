@@ -8,8 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.features.accounts.models import BankAccountModel, TransactionModel
 
 
-async def save_many_bank_accounts(db: AsyncSession, accounts: list[BankAccountModel]) -> None:
-    db.add_all(accounts)
+async def upsert_bank_accounts(db: AsyncSession, accounts: list[dict[str, Any]]) -> None:
+    if not accounts:
+        return
+    stmt = insert(BankAccountModel).values(accounts)
+    update_columns = set(BankAccountModel.__table__.columns.keys()) - {"account_id"}
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["account_id"],
+        set_={col: stmt.excluded[col] for col in update_columns},
+    )
+    await db.execute(stmt)
     await db.commit()
 
 

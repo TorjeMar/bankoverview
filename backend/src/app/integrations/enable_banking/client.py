@@ -183,3 +183,11 @@ def retrieve_account_transaction(
     print("response:", response.json())
     
     return EnableBankingTransaction.model_validate(response.json())
+
+def delete_enable_banking_session(settings: Settings, session_id: str) -> None:
+    response = requests.delete(
+        f"{get_api_base_url(settings)}/sessions/{session_id}",
+        headers=create_enable_banking_headers(settings),
+        timeout=30,
+    )
+    response.raise_for_status()
