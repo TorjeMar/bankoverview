@@ -24,5 +24,4 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
         yield session
 
 
-app_sessions: dict[str, dict[str, str]] = {}
 pending_authorizations: dict[str, PendingAuthorization] = {}

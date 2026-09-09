@@ -68,7 +68,6 @@ def start_auth(
 
     pending_authorizations[state] = PendingAuthorization(
         user_id=current_user.user_id,
-        app_session_id=current_user.app_session_id,
         created_at=datetime.now(UTC),
         status="pending",
     )

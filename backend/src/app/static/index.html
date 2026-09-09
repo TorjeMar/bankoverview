@@ -238,6 +238,38 @@
       card.appendChild(summary);
     }
 
+    // OAuth-style redirect endpoints (this app only has one: GET /login)
+    // hand the browser off to a real login page — fetch() can't drive
+    // that (no CORS access to Google's consent screen, and nowhere to
+    // type a password inside a fetch response body), so this has to be
+    // a real top-level navigation instead of the generic Send button.
+    if (method === "get" && path === "/login") {
+      const note = document.createElement("div");
+      note.className = "op-summary";
+      note.textContent = "Full-page redirect — opens Google's real login screen, then returns you here.";
+      card.appendChild(note);
+
+      const loginBtn = document.createElement("button");
+      loginBtn.textContent = "Log in with Google →";
+      loginBtn.onclick = () => {
+        window.location.href = API_PREFIX + path;
+      };
+      card.appendChild(loginBtn);
+
+      return card;
+    }
+
+    // Only ever meant to be hit by Google's own redirect (needs a
+    // `state`/`code` pair tied to the server-side OAuth session) —
+    // firing it manually via the generic Send button always 500s.
+    if (method === "get" && path === "/login/callback") {
+      const note = document.createElement("div");
+      note.className = "op-summary";
+      note.textContent = "Not directly callable — Google redirects here automatically after login.";
+      card.appendChild(note);
+      return card;
+    }
+
     const relevantParams = (op.parameters || []).filter(
       (p) => p.in === "path" || p.in === "query"
     );

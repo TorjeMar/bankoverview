@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     aspsp_country: str
     callback_url: AnyHttpUrl
     database_url: str
+    google_client_id: str
+    google_client_secret: str
+    session_secret: str
 
     @field_validator("key_path")
     @classmethod
@@ -48,7 +51,7 @@ class Settings(BaseSettings):
 
         return value
 
-    @field_validator("application_id", "aspsp_name")
+    @field_validator("application_id", "aspsp_name", "google_client_id", "google_client_secret")
     @classmethod
     def must_not_be_empty(cls, value: str) -> str:
         value = value.strip()
@@ -56,6 +59,16 @@ class Settings(BaseSettings):
         if not value:
             raise ValueError("Value must not be empty")
 
+        return value
+
+    @field_validator("session_secret")
+    @classmethod
+    def validate_session_secret(cls, value: str) -> str:
+        if len(value) < 32:
+            raise ValueError(
+                "session_secret must be at least 32 characters — "
+                "generate one with `openssl rand -hex 32`"
+            )
         return value
 
     @field_validator("database_url")

@@ -9,7 +9,6 @@ class StartAuthorizationResponse(BaseModel):
 
 class PendingAuthorization(BaseModel):
     user_id: str
-    app_session_id: str
     created_at: datetime
     status: str
 
