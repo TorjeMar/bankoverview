@@ -5,22 +5,40 @@ FastAPI backend for a personal finance dashboard using Open Banking (via
 
 ## Features
 
-- FastAPI backend, organized by feature (`auth`, `connections`, `accounts`)
-- Google OAuth login (via Authlib) with self-contained JWT app sessions —
-  survives backend restarts, no server-side session store
+- FastAPI backend, organized by feature (`auth`, `connections`, `accounts`,
+  `overview`)
+- Google OAuth login (via Authlib) with revocable, DB-backed sessions (JWT
+  `sid` claim + `sessions` table) and double-submit CSRF protection on every
+  state-changing route
 - Enable Banking OAuth flow with RS256 JWT authentication for bank access
-  (separate from the app's own Google login)
+  (separate from the app's own Google login), with a bank picker
+  (`GET /connections/banks`) so a user can connect more than one bank —
+  reconnecting the same bank supersedes only that bank's prior connection,
+  other banks stay active
 - Disconnect (revoke) and reauth for bank connections, including revoking
   consent on Enable Banking's side (`DELETE /sessions/{id}`), not just locally
 - Postgres persistence for users, banks, bank connections, bank accounts, and
   transactions (`users` / `banks` / `bank_connections` / `bank_accounts` /
   `transactions`), managed with Alembic migrations
-- Transactions are synced to and read from Postgres rather than fetched live
-  on every request
+- Quota-conscious dashboard data: `GET /overview` is a pure DB read (cached
+  balances + persisted transactions, aggregated across every active
+  connection); `POST /sync` is the only user-triggered call that actually
+  hits Enable Banking, since account access is rate-limited to a few calls a
+  day per connection
+- Booked/available balance in `/overview` reflects still-pending transactions
+  live (subtracts pending debits, adds pending credits) rather than lagging
+  until the bank books them
+- Per-account custom display name (`PATCH /accounts/{id}`) and manual drag-
+  and-drop ordering (`PUT /accounts/order`), both persisted and untouched by
+  reconnect syncs
+- Internal transfers between a user's own accounts (bank-labeled
+  "Kontoregulering") and ISO 4217 "XXX" (no-currency) transactions are
+  excluded from the in/out/net currency totals
 - In-memory storage only for short-lived state (pending bank authorizations
   mid-handshake)
 - Environment-based configuration using Pydantic Settings
-- End-user dashboard served at `/app`
+- End-user dashboard served at `/app`, with `Cache-Control: no-cache` on
+  every asset so a redeploy is never masked by a stale browser cache
 
 ---
 
@@ -32,16 +50,18 @@ backend
 │   ├── api
 │   │   └── router.py              # mounts feature routers under /api/v1
 │   ├── core
-│   │   └── config.py              # Settings (env vars)
+│   │   ├── config.py              # Settings (env vars)
+│   │   └── csrf.py                # double-submit CSRF token generation
 │   ├── database.py                # SQLAlchemy engine/session, Base, in-memory stores
 │   ├── features
-│   │   ├── auth                   # Google OAuth login, JWT session cookie, get_current_user, UserModel
+│   │   ├── auth                   # Google OAuth login, sessions table, CSRF, get_current_user, UserModel
 │   │   ├── connections            # bank auth start/callback/revoke, BankConnectionModel, BankModel
-│   │   └── accounts                # accounts/balances/transactions (synced), BankAccountModel, TransactionModel
+│   │   ├── accounts               # accounts/balances/transactions (synced), rename, reorder
+│   │   └── overview                # GET /overview (DB read) + POST /sync (live refresh)
 │   ├── integrations
 │   │   └── enable_banking         # Enable Banking API client, schemas, error translation
 │   ├── static
-│   │   └── index.html             # dev dashboard, reads /openapi.json
+│   │   └── dashboard              # end-user dashboard, served at /app
 │   └── main.py
 ├── migrations                     # Alembic environment + versions
 ├── alembic.ini
@@ -159,15 +179,25 @@ cookie plus a readable `csrf_token` cookie, and redirects to `/app/`.
 
 ---
 
-### 2. Start bank authorization
+All state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`) also require an
+`X-CSRF-Token` header matching the readable `csrf_token` cookie — a
+double-submit check (`HMAC-SHA256(SESSION_SECRET, session_id)`), verified
+with a constant-time comparison.
+
+---
+
+### 2. Pick a bank and start authorization
 
 ```
+GET  /api/v1/connections/banks
 POST /api/v1/connections/start
 ```
 
-Requires authentication.
-
-Creates a pending authorization and returns the Enable Banking authorization URL.
+Requires authentication. `GET /connections/banks` lists the ASPSPs Enable
+Banking offers for the configured country. `POST /connections/start` takes
+an optional `{bank_name, bank_country}` body (falls back to the
+`ASPSP_NAME`/`ASPSP_COUNTRY` env defaults if omitted), creates a pending
+authorization, and returns the Enable Banking authorization URL.
 
 ---
 
@@ -183,43 +213,69 @@ The user authenticates with the selected bank through Enable Banking.
 GET /api/v1/connections/callback
 ```
 
-Enable Banking redirects the user back with `state` and `code`. The application:
+Reached only via Enable Banking's own browser redirect (never called via
+`fetch`), so every outcome — success or failure — redirects the browser to
+`/app/?connection=<status>` rather than returning JSON. On success it:
 
 - validates the authorization state
 - exchanges the authorization code
 - resolves (or creates) the `Bank` row and persists the `BankConnection`
-- marks the user's previous active connection (if any) `"superseded"`, so
-  exactly one connection is `"active"` per user at a time
+- marks the user's previous active connection **to that same bank** (if any)
+  `"superseded"` — connections to other banks are left active, so a user can
+  hold several simultaneous bank connections
 - upserts one `BankAccount` row per account returned in the session, keyed on
   `account_id` (IBAN, name, currency, cash account type, servicer BIC — all
   available from the session-creation response, no extra API call needed)
+- backfills 730 days of transaction history and an initial balance snapshot
+  per account (Enable Banking's `date_from` has no documented default when
+  omitted — observed silently defaulting to ~30 days on at least one ASPSP)
 
 ---
 
 ### 5. Disconnect
 
 ```
-DELETE /api/v1/connections/revoke
+DELETE /api/v1/connections/{connection_id}
 ```
 
-Requires authentication. Revokes consent on Enable Banking's side
-(`DELETE /sessions/{session_id}`) and marks the local `BankConnection`
-`"revoked"` — a soft delete, so `bank_accounts`/`transactions` stay in place
-as history and simply stop being reachable through an active connection.
+Requires authentication and ownership of the connection. Revokes consent on
+Enable Banking's side (`DELETE /sessions/{session_id}`) and marks the local
+`BankConnection` `"revoked"` — a soft delete, so `bank_accounts`/
+`transactions` stay in place as history and simply stop being reachable
+through an active connection.
 
 ---
 
-### 6. Retrieve accounts, balances and transactions
+### 6. Dashboard data: overview and sync
 
-`GET /accounts/{id}`, `/balances`, and `/transactions` all check the
-requested `account_id` against the persisted `BankAccount` rows before doing
-anything else, so one user can't query another user's account by guessing an
-ID. `GET /accounts` (the list) and account details/balances are still
-fetched live from Enable Banking. Transactions are different: each
-`/transactions` request first syncs the last 7 days from Enable Banking into
-Postgres (`upsert` keyed on transaction ID), then reads the full history back
-from the database — so transaction history is persisted and querying it
-doesn't re-hit Enable Banking's rate limit on every page load.
+```
+GET  /api/v1/overview?days=30
+POST /api/v1/sync
+```
+
+`GET /overview` is a pure Postgres read — cached balances (adjusted live for
+any still-pending transactions) and persisted transactions, aggregated
+across every one of the user's active connections. It never calls Enable
+Banking, so it's safe to call on every dashboard load regardless of rate
+limits. `POST /sync` is the only user-triggered action that actually hits
+Enable Banking: it refreshes balances and the last 7 days of transactions
+for every account on every active connection, and returns a summary
+(`accounts_synced`, `transactions_synced`, `failed`).
+
+---
+
+### 7. Account rename and reorder
+
+```
+PATCH /api/v1/accounts/{account_id}
+PUT   /api/v1/accounts/order
+```
+
+Both require authentication and ownership, checked across all of the user's
+connections (not just one). `PATCH` sets a `display_name` override (empty
+string clears it, reverting to the bank's own account name) that survives
+reconnect syncs. `PUT /order` takes the full desired list of `account_id`s
+and persists each one's position as `sort_order`, also reconnect-safe.
 
 ---
 
@@ -228,14 +284,21 @@ doesn't re-hit Enable Banking's rate limit on every page load.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/login` | Start Google login (browser redirect) |
-| GET | `/api/v1/login/callback` | Google OAuth callback — sets the session cookie |
+| GET | `/api/v1/login/callback` | Google OAuth callback — creates the session, redirects to `/app/` |
+| GET | `/api/v1/me` | Get the current user |
+| POST | `/api/v1/logout` | Revoke the current session |
+| GET | `/api/v1/connections/banks` | List connectable banks |
 | POST | `/api/v1/connections/start` | Start bank authorization |
-| GET | `/api/v1/connections/callback` | Handle bank authorization callback |
-| DELETE | `/api/v1/connections/revoke` | Disconnect the active bank connection |
-| GET | `/api/v1/accounts` | List accounts |
-| GET | `/api/v1/accounts/{account_id}` | Get account details |
-| GET | `/api/v1/accounts/{account_id}/balances` | Get account balances |
+| GET | `/api/v1/connections/callback` | Handle bank authorization callback (redirects browser to `/app/`) |
+| DELETE | `/api/v1/connections/{connection_id}` | Disconnect a bank connection |
+| GET | `/api/v1/overview` | Dashboard data — DB-only read, aggregated across all active connections |
+| POST | `/api/v1/sync` | Refresh balances and recent transactions from every active connection |
+| GET | `/api/v1/accounts` | List accounts (live, single-connection legacy) |
+| GET | `/api/v1/accounts/{account_id}` | Get account details (live) |
+| GET | `/api/v1/accounts/{account_id}/balances` | Get account balances (live) |
 | GET | `/api/v1/accounts/{account_id}/transactions` | Sync (last 7 days) then list account transactions from Postgres |
+| PATCH | `/api/v1/accounts/{account_id}` | Set a custom display name |
+| PUT | `/api/v1/accounts/order` | Reorder accounts |
 
 ---
 
@@ -244,16 +307,19 @@ doesn't re-hit Enable Banking's rate limit on every page load.
 - Only pending bank authorizations (mid-handshake, short-lived) are still
   in-memory. Users, banks, bank connections, bank accounts, and transactions
   all persist to Postgres.
-- Only the current user's active bank connection is used — no support for
-  multiple simultaneous connections yet (reconnecting supersedes the
-  previous one rather than running both).
-- Account details and balances are still fetched live from Enable Banking on
-  every request rather than cached/persisted locally (transactions already
-  are). Enable Banking/DNB rate-limits unattended account access to a few
-  calls per day per connection, so repeated live calls can exhaust that
-  quota.
+- The legacy `GET /accounts`, `/accounts/{id}`, `/balances` still fetch live
+  from Enable Banking on every request rather than the cached/persisted data
+  `/overview` uses — kept for now since nothing in the dashboard calls them,
+  but they'd need the same multi-connection/caching treatment before real use.
+- Internal-transfer detection (`GET /overview`'s currency totals) relies on
+  the bank's own "Kontoregulering" label — a transfer to an account we don't
+  track (e.g. a credit card or another bank entirely) has no such label and
+  still counts as real spending, since there's no way to know it's "yours"
+  without that account also being connected here.
 - No support for account/connection ownership beyond "the current session's
   user" — no sharing, no admin views.
+- No test database isolation — the test suite runs against the real dev
+  Postgres instance.
 
 ---
 
@@ -261,10 +327,9 @@ doesn't re-hit Enable Banking's rate limit on every page load.
 
 - Persist pending bank authorizations (or move them to Redis) instead of
   in-memory
-- Support multiple bank connections per user
 - Proactively refresh consent before it expires, rather than relying on the
   user to notice and reconnect
-- Persist account details/balances locally the same way transactions
-  already are, to further reduce live Enable Banking calls
-- Frontend
+- Bring the legacy live `/accounts` endpoints in line with `/overview`'s
+  multi-connection, DB-cached model (or remove them)
+- Dedicated test database instead of running the suite against dev Postgres
 - Docker deployment for the API itself
