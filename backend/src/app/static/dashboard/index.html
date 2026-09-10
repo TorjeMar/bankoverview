@@ -193,9 +193,6 @@
             <div style="font-family:var(--font-heading);font-weight:800;font-size:28px;margin-top:10px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">{{ a.balanceStr }}</div>
             <div style="margin-top:8px;font-size:12px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ a.iban }}</div>
             <div style="margin-top:6px;font-size:11px;color:var(--color-neutral-700)">{{ a.freshness }}</div>
-            <div style="margin-top:12px;height:2px;background:var(--color-neutral-300)">
-              <div style="height:2px;background:var(--color-accent);width:{{ a.share }}%"></div>
-            </div>
           </div>
         </sc-for>
       </div>
@@ -215,8 +212,8 @@
               <button onClick="{{ setP90 }}" style="font:inherit;font-size:12px;padding:7px 13px;border:0;border-left:1px solid var(--color-divider);cursor:pointer;background:{{ p90bg }};color:{{ p90fg }}">90 days</button>
             </div>
           </div>
-          <div style="margin-top:20px">
-            <svg viewBox="0 0 960 250" preserveAspectRatio="none" style="width:100%;height:250px;display:block;overflow:visible">
+          <div style="margin-top:20px;position:relative">
+            <svg viewBox="0 0 960 300" preserveAspectRatio="none" style="width:100%;height:300px;display:block;overflow:visible" onMouseLeave="{{ onChartLeave }}">
               <sc-for list="{{ chart.yLabels }}" as="g" hint-placeholder-count="3">
                 <g>
                   <line x1="64" x2="956" y1="{{ g.y }}" y2="{{ g.y }}" stroke="var(--color-neutral-300)" stroke-width="1"></line>
@@ -227,9 +224,18 @@
               <polyline points="{{ chart.linePoints }}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linejoin="round"></polyline>
               <circle cx="{{ chart.lastX }}" cy="{{ chart.lastY }}" r="4" fill="var(--color-accent)"></circle>
               <sc-for list="{{ chart.xLabels }}" as="t" hint-placeholder-count="5">
-                <text x="{{ t.x }}" y="244" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif" text-anchor="middle">{{ t.label }}</text>
+                <text x="{{ t.x }}" y="294" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif" text-anchor="middle">{{ t.label }}</text>
+              </sc-for>
+              <line x1="{{ mainTooltip.x }}" x2="{{ mainTooltip.x }}" y1="14" y2="266" stroke="var(--color-neutral-400)" stroke-width="1" stroke-dasharray="3,3" opacity="{{ mainTooltipOn }}"></line>
+              <circle cx="{{ mainTooltip.x }}" cy="{{ mainTooltip.y }}" r="4.5" fill="var(--color-accent)" stroke="var(--color-bg)" stroke-width="2" opacity="{{ mainTooltipOn }}"></circle>
+              <sc-for list="{{ chart.points }}" as="p" hint-placeholder-count="10">
+                <rect x="{{ p.hitX }}" y="0" width="{{ p.hitW }}" height="266" fill="transparent" onMouseEnter="{{ p.onEnter }}" style="cursor:crosshair"></rect>
               </sc-for>
             </svg>
+            <div style="position:absolute;left:{{ mainTooltip.xPct }}%;top:{{ mainTooltip.yPct }}%;transform:{{ mainTooltip.tooltipTransform }};pointer-events:none;opacity:{{ mainTooltipOn }};background:var(--color-text);color:var(--color-bg);padding:8px 12px;border-radius:4px;white-space:nowrap;transition:opacity .1s">
+              <div style="font-size:11px">{{ mainTooltip.dateLabel }}</div>
+              <div style="font-size:14px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums">{{ mainTooltip.valueStr }}</div>
+            </div>
           </div>
           <div style="display:flex;gap:40px;margin-top:18px;padding-top:16px;border-top:1px solid var(--color-divider)">
             <div><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700)">Low</div><div style="font-variant-numeric:tabular-nums;font-weight:600;margin-top:4px">{{ chart.minStr }}</div></div>
@@ -245,8 +251,8 @@
             <sc-for list="{{ counterparties }}" as="c" hint-placeholder-count="6">
               <div style="padding:14px 0;border-bottom:1px solid var(--color-divider)">
                 <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
-                  <span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
-                  <span style="font-variant-numeric:tabular-nums;font-weight:600">{{ c.amountStr }}</span>
+                  <span style="flex:1;min-width:0;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
+                  <span style="flex-shrink:0;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600">{{ c.amountStr }}</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
                   <div style="flex:1;height:6px;background:var(--color-neutral-200)">
@@ -358,16 +364,27 @@
         </div>
       </div>
       <hr class="hr" style="margin:32px 0">
-      <svg viewBox="0 0 960 200" preserveAspectRatio="none" style="width:100%;height:200px;display:block;overflow:visible">
-        <sc-for list="{{ acctChart.yLabels }}" as="g" hint-placeholder-count="3">
-          <g>
-            <line x1="64" x2="956" y1="{{ g.y }}" y2="{{ g.y }}" stroke="var(--color-neutral-300)" stroke-width="1"></line>
-            <text x="0" y="{{ g.ty }}" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif">{{ g.label }}</text>
-          </g>
-        </sc-for>
-        <path d="{{ acctChart.areaPath }}" fill="var(--color-accent-200)" opacity="0.55"></path>
-        <polyline points="{{ acctChart.linePoints }}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linejoin="round"></polyline>
-      </svg>
+      <div style="position:relative">
+        <svg viewBox="0 0 960 200" preserveAspectRatio="none" style="width:100%;height:200px;display:block;overflow:visible" onMouseLeave="{{ onChartLeave }}">
+          <sc-for list="{{ acctChart.yLabels }}" as="g" hint-placeholder-count="3">
+            <g>
+              <line x1="64" x2="956" y1="{{ g.y }}" y2="{{ g.y }}" stroke="var(--color-neutral-300)" stroke-width="1"></line>
+              <text x="0" y="{{ g.ty }}" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif">{{ g.label }}</text>
+            </g>
+          </sc-for>
+          <path d="{{ acctChart.areaPath }}" fill="var(--color-accent-200)" opacity="0.55"></path>
+          <polyline points="{{ acctChart.linePoints }}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linejoin="round"></polyline>
+          <line x1="{{ acctTooltip.x }}" x2="{{ acctTooltip.x }}" y1="10" y2="180" stroke="var(--color-neutral-400)" stroke-width="1" stroke-dasharray="3,3" opacity="{{ acctTooltipOn }}"></line>
+          <circle cx="{{ acctTooltip.x }}" cy="{{ acctTooltip.y }}" r="4.5" fill="var(--color-accent)" stroke="var(--color-bg)" stroke-width="2" opacity="{{ acctTooltipOn }}"></circle>
+          <sc-for list="{{ acctChart.points }}" as="p" hint-placeholder-count="10">
+            <rect x="{{ p.hitX }}" y="0" width="{{ p.hitW }}" height="180" fill="transparent" onMouseEnter="{{ p.onEnter }}" style="cursor:crosshair"></rect>
+          </sc-for>
+        </svg>
+        <div style="position:absolute;left:{{ acctTooltip.xPct }}%;top:{{ acctTooltip.yPct }}%;transform:{{ acctTooltip.tooltipTransform }};pointer-events:none;opacity:{{ acctTooltipOn }};background:var(--color-text);color:var(--color-bg);padding:8px 12px;border-radius:4px;white-space:nowrap;transition:opacity .1s">
+          <div style="font-size:11px">{{ acctTooltip.dateLabel }}</div>
+          <div style="font-size:14px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums">{{ acctTooltip.valueStr }}</div>
+        </div>
+      </div>
       <h2 style="margin:40px 0 0;font-size:22px;letter-spacing:-0.02em">Activity · {{ periodLabel }}</h2>
       <table class="table" style="margin-top:14px">
         <thead><tr><th style="width:110px">Date</th><th>Description</th><th style="width:100px">Status</th><th style="width:150px;text-align:right">Amount</th></tr></thead>
@@ -434,6 +451,7 @@ const DAY = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' })
 const LONGDAY = new Intl.DateTimeFormat('nb-NO', { weekday: 'short', day: 'numeric', month: 'long' });
 
 const iso = (d) => d.toISOString().slice(0, 10);
+const emptyHoverPoint = { x: 0, y: 0, xPct: 0, yPct: 0, dateLabel: '', valueStr: '', tooltipTransform: 'translate(-50%, -125%)' };
 const parse = (s) => new Date(s + 'T00:00:00Z');
 const compact = (v) => (Math.abs(v) >= 1000 ? NUM0.format(Math.round(v / 1000)) + 'k' : NUM0.format(v));
 const signed = (n) => (n < 0 ? '−' : '+') + NUM2.format(Math.abs(n));
@@ -468,6 +486,35 @@ function buildChart(series, h, padT, padB) {
     .map((p, i) => ({ i, label: DAY.format(parse(p.date)) }))
     .filter((p) => p.i % step === 0 || p.i === n - 1)
     .map((p) => ({ x: X(p.i).toFixed(1), label: p.label }));
+  // One invisible hit-slice per point, centered on it, for hover — wide
+  // enough to hit even when points are densely packed (90-day view).
+  const slice = (x1 - x0) / Math.max(1, n - 1);
+  const points = series.map((p, i) => {
+    const x = X(i), y = Y(p.balance);
+    return {
+      i,
+      x: x.toFixed(1),
+      y: y.toFixed(1),
+      // Percent-of-viewBox position, for an HTML tooltip overlay — the SVG
+      // uses preserveAspectRatio="none" so this maps 1:1 to the rendered
+      // box regardless of actual pixel size.
+      xPct: ((x / 960) * 100).toFixed(2),
+      yPct: ((y / h) * 100).toFixed(2),
+      hitX: Math.max(x0, x - slice / 2).toFixed(1),
+      hitW: slice.toFixed(1),
+      // Not enough clearance above a point near the top of the chart —
+      // the tooltip would overlap the line elsewhere (e.g. near the peak).
+      // Flip it below the point instead.
+      // Centered by default; pinned to the point's left/right edge near
+      // the chart's own edges instead of overflowing into whatever sits
+      // next to it (e.g. "Where it went" beside a right-edge point).
+      tooltipTransform:
+        'translate(' + (x < 150 ? '0%' : x > 810 ? '-100%' : '-50%') + ', '
+        + (y - padT < 60 ? '16px' : '-125%') + ')',
+      dateLabel: LONGDAY.format(parse(p.date)),
+      valueStr: NUM0.format(p.balance),
+    };
+  });
   return {
     linePoints: pts.join(' '),
     areaPath: 'M' + pts.join(' L') + ' L' + X(n - 1).toFixed(1) + ',' + bottom + ' L' + x0 + ',' + bottom + ' Z',
@@ -475,6 +522,8 @@ function buildChart(series, h, padT, padB) {
     lastY: Y(vals[n - 1]).toFixed(1),
     yLabels: ticks,
     xLabels,
+    points,
+    bottom,
     minStr: NUM0.format(Math.min.apply(null, vals)),
     maxStr: NUM0.format(Math.max.apply(null, vals)),
     changeStr: signed(vals[n - 1] - vals[0]),
@@ -506,6 +555,7 @@ class Component extends DCLogic {
     query: '', dir: 'all', period: 30, authUrl: '', syncStep: 0,
     error: null, connection: null, connections: [], user: null, currencyTotals: [], partialFailures: [],
     callbackResult: null, syncMessage: null, renameDraft: '', renameSaved: false, draggingUid: null,
+    hoverChart: null, hoverPoint: null, hovering: false,
   };
 
   componentDidMount() {
@@ -532,12 +582,18 @@ class Component extends DCLogic {
       const [user, overview] = await Promise.all([
         this.api.me(), this.api.overview(this.state.period),
       ]);
+      const todayIso = iso(new Date());
       const accounts = (overview.accounts || []).map((details) => {
           const bal = details.balances || [];
           const byType = {};
           bal.forEach((b) => { byType[b.balance_type] = Number(b.balance_amount.amount); });
           const booked = Number(details.current_balance || 0);
           const uid = details.account_id;
+          // The connection goes active as soon as it's created — accounts
+          // exist immediately but their own backfill may still be running
+          // in the background. No last_synced_at yet and no error means
+          // "not synced yet", not "zero balance".
+          const pending = !details.last_synced_at && details.sync_status !== 'error';
           return {
             uid,
             product: details.name || 'Account',
@@ -548,15 +604,25 @@ class Component extends DCLogic {
             available: byType.ITAV != null ? byType.ITAV : booked,
             freshness: details.last_synced_at,
             syncStatus: details.sync_status,
+            pending,
             connectionId: details.connection_id,
             bankName: details.bank_name,
             txs: (overview.transactions || []).filter((t) => t.account_id === uid).map((t) => {
               const amt = Number(t.amount);
               const isIn = t.credit_debit_indicator === 'CRDT';
               return {
-                id: t.transaction_id, date: t.booking_date, amount: amt, isIn,
+                // A still-pending transaction can have no booking_date yet.
+                // Every date-formatting call site downstream assumes a real
+                // date string, so default to today here once rather than
+                // guard every consumer separately.
+                id: t.transaction_id, date: t.booking_date || todayIso, amount: amt, isIn,
                 signed: isIn ? amt : -amt, text: t.remittance_information, status: t.status,
-                currency: t.currency,
+                // ISO 4217 "XXX" = Enable Banking hasn't assigned a currency
+                // yet on this still-pending transfer, but the amount is
+                // already in the account's own currency (confirmed against
+                // the real bank balance) — showing literal "XXX" to the
+                // user would look like a different, foreign currency.
+                currency: t.currency === 'XXX' ? (details.balance_currency || details.currency) : t.currency,
               };
             }),
           };
@@ -567,17 +633,23 @@ class Component extends DCLogic {
       let screen = target || 'dashboard';
       let error = null;
       if (!live.length) screen = 'connect';
-      else if (connection.status === 'initializing') screen = 'syncing';
       else if (connection.status === 'expired') { screen = 'error'; error = { kind: 'consent' }; }
-      const initializing = connection && connection.status === 'initializing';
-      if (!initializing) clearInterval(this.timer);
+      // Accounts backfill individually in the background after connect —
+      // poll while any of them haven't synced yet so the dashboard fills
+      // in progressively instead of waiting for the slowest account.
+      const stillSyncing = accounts.some((a) => a.pending);
+      if (!stillSyncing) clearInterval(this.timer);
       this.setState({
         user, connection, connections, accounts, error, busy: false, screen,
-        syncStep: initializing ? this.state.syncStep : 3,
+        syncStep: stillSyncing ? this.state.syncStep : 3,
         currencyTotals: overview.currency_totals || [],
         partialFailures: overview.partial_failures || [],
       });
-      if (initializing) this.pollTimer = setTimeout(() => this.load('dashboard'), 1500);
+      // Read this.state.screen live when the timer fires, not the `screen`
+      // const captured here — the user may have navigated in the 1.5s
+      // between scheduling and firing, and reloading with a stale target
+      // would silently bounce them back to wherever they were before.
+      if (stillSyncing) this.pollTimer = setTimeout(() => this.load(this.state.screen), 1500);
     } catch (e) {
       clearInterval(this.timer);
       if (e.status === 404) this.setState({ busy: false, screen: 'connect' });
@@ -666,11 +738,21 @@ class Component extends DCLogic {
     }
   };
 
+  // hoverChart/hoverPoint deliberately persist after the mouse leaves —
+  // only `hovering` toggles. The tooltip's opacity fades out over its
+  // last real position instead of snapping to the empty-point fallback
+  // (0,0) and flashing in the top-left corner mid-fade.
+  onChartHover = (chartId, point) => this.setState({ hoverChart: chartId, hoverPoint: point, hovering: true });
+  onChartLeave = () => this.setState({ hovering: false });
+
   onRequestSync = async () => {
     this.setState({ busy: true, syncMessage: null });
     try {
       const result = await this.api.sync();
-      await this.load('dashboard');
+      // Stay on whatever screen the user triggered this from — the
+      // confirmation message below only renders on the Settings screen,
+      // so hardcoding a jump to 'dashboard' silently hid it.
+      await this.load(this.state.screen);
       const msg = result
         ? `Synced ${result.transactions_synced} transaction${result.transactions_synced === 1 ? '' : 's'} across ${result.accounts_synced} account${result.accounts_synced === 1 ? '' : 's'}`
           + (result.failed.length ? `, ${result.failed.length} failed` : '')
@@ -686,12 +768,18 @@ class Component extends DCLogic {
   /* ── derived ──────────────────────────────────────────── */
 
   windowTxs() {
+    // Match the backend's own window exactly: `since = today - period`,
+    // kept via `booking_date >= since`, so this cutoff has to line up or a
+    // transaction the server already sent gets silently re-filtered out.
     const cut = new Date();
-    cut.setUTCDate(cut.getUTCDate() - this.state.period + 1);
+    cut.setUTCDate(cut.getUTCDate() - this.state.period);
     const cutIso = iso(cut);
     const rows = [];
     this.state.accounts.forEach((a) => {
-      a.txs.forEach((t) => { if (t.date >= cutIso) rows.push({ ...t, account: a.product }); });
+      // A still-pending transaction can have no booking_date yet — the
+      // backend deliberately keeps those regardless of window, so `null`
+      // here has to mean "in", not silently fail the `>=` comparison.
+      a.txs.forEach((t) => { if (!t.date || t.date >= cutIso) rows.push({ ...t, account: a.product }); });
     });
     return rows.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
   }
@@ -705,8 +793,6 @@ class Component extends DCLogic {
     const total = primaryAccounts.reduce((n, a) => n + a.booked, 0);
     const win = this.windowTxs();
     const primaryWin = win.filter((t) => t.currency === primaryCurrency);
-    const inflow = primaryWin.filter((t) => t.isIn).reduce((n, t) => n + t.amount, 0);
-    const outflow = primaryWin.filter((t) => !t.isIn).reduce((n, t) => n + t.amount, 0);
     const periodLabel = s.period + ' days';
     const allTx = accounts.flatMap((a) => a.txs.map((t) => ({ ...t, account: a.product })));
 
@@ -716,9 +802,11 @@ class Component extends DCLogic {
       amountStr: signed(t.signed) + ' ' + t.currency, isIn: t.isIn, isOut: !t.isIn,
     });
 
-    // counterparties
+    // counterparties — same exclusion as the backend's currency totals, so
+    // this breakdown doesn't contradict "In/Out/Net" by listing a
+    // transfer between the user's own accounts as real spending.
     const agg = {};
-    primaryWin.filter((t) => !t.isIn).forEach((t) => {
+    primaryWin.filter((t) => !t.isIn && !t.text.toLowerCase().includes('kontoregulering')).forEach((t) => {
       const k = counterpartyOf(t.text);
       agg[k] = agg[k] || { name: k, sum: 0, n: 0 };
       agg[k].sum += t.amount; agg[k].n += 1;
@@ -801,10 +889,7 @@ class Component extends DCLogic {
       dInBg: s.dir === 'in' ? on : off, dInFg: s.dir === 'in' ? onFg : offFg,
       dOutBg: s.dir === 'out' ? on : off, dOutFg: s.dir === 'out' ? onFg : offFg,
 
-      totalStr: NUM2.format(total), accountCount: accounts.length,
-      asOf: LONGDAY.format(new Date()), periodLabel,
-      inStr: NUM0.format(Math.round(inflow)), outStr: NUM0.format(Math.round(outflow)),
-      netStr: signed(Math.round(inflow - outflow)),
+      accountCount: accounts.length, periodLabel,
       txCount: allTx.length, filteredCount: filtered.length,
       noResults: filtered.length === 0,
       currencyCards: s.currencyTotals.map((c) => ({
@@ -821,10 +906,9 @@ class Component extends DCLogic {
       accountRows: accounts.map((a, i) => ({
         uid: a.uid, product: a.product, notFirst: i > 0,
         typeLabel: a.type === 'SVGS' ? 'Savings' : 'Current',
-        balanceStr: NUM0.format(a.booked) + ' ' + a.currency,
+        balanceStr: a.pending ? 'Syncing…' : NUM0.format(a.booked) + ' ' + a.currency,
         iban: a.iban,
-        freshness: a.freshness ? 'Updated ' + new Date(a.freshness).toLocaleString('nb-NO') : a.syncStatus,
-        share: (() => { const ct = s.currencyTotals.find((c) => c.currency === a.currency); return ct && Number(ct.balance) ? Math.round((a.booked / Number(ct.balance)) * 100) : 0; })(),
+        freshness: a.pending ? 'Syncing…' : (a.freshness ? 'Updated ' + new Date(a.freshness).toLocaleString('nb-NO') : a.syncStatus),
         open: () => this.setState({ screen: 'account', selected: a.uid, renameDraft: a.product }),
         opacity: s.draggingUid === a.uid ? 0.4 : 1,
         dragStart: (e) => this.onDragStart(e, i),
@@ -832,8 +916,24 @@ class Component extends DCLogic {
         drop: (e) => this.onDrop(e, i),
       })),
 
-      chart: buildChart(chartSeries, 250, 14, 34),
-      acctChart: buildChart(acctSeries, 200, 10, 20),
+      chart: (() => {
+        const c = buildChart(chartSeries, 300, 14, 34);
+        c.points = c.points.map((p) => ({ ...p, onEnter: () => this.onChartHover('main', p) }));
+        return c;
+      })(),
+      acctChart: (() => {
+        const c = buildChart(acctSeries, 200, 10, 20);
+        c.points = c.points.map((p) => ({ ...p, onEnter: () => this.onChartHover('acct', p) }));
+        return c;
+      })(),
+      onChartLeave: this.onChartLeave,
+      // Always a real object (never null) so attribute/text bindings never
+      // resolve against a missing property — visibility is purely the *On
+      // opacity flag, position/content default to 0 harmlessly when hidden.
+      mainTooltip: s.hoverChart === 'main' && s.hoverPoint ? s.hoverPoint : emptyHoverPoint,
+      mainTooltipOn: s.hoverChart === 'main' && s.hovering ? 1 : 0,
+      acctTooltip: s.hoverChart === 'acct' && s.hoverPoint ? s.hoverPoint : emptyHoverPoint,
+      acctTooltipOn: s.hoverChart === 'acct' && s.hovering ? 1 : 0,
       counterparties,
       recent: win.slice(0, 8).map(row),
       txGroups,
@@ -841,7 +941,8 @@ class Component extends DCLogic {
       acct: sel ? {
         product: sel.product, iban: sel.iban, bic: sel.bic || '',
         typeLabel: sel.type === 'SVGS' ? 'Savings account' : 'Current account',
-        bookedStr: NUM2.format(sel.booked) + ' ' + sel.currency, availableStr: NUM2.format(sel.available) + ' ' + sel.currency,
+        bookedStr: sel.pending ? 'Syncing…' : NUM2.format(sel.booked) + ' ' + sel.currency,
+        availableStr: sel.pending ? 'Syncing…' : NUM2.format(sel.available) + ' ' + sel.currency,
       } : { product: '', iban: '', bic: '', typeLabel: '', bookedStr: '', availableStr: '' },
 
       syncSteps: [

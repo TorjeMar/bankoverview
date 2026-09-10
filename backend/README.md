@@ -29,11 +29,17 @@ FastAPI backend for a personal finance dashboard using Open Banking (via
   live (subtracts pending debits, adds pending credits) rather than lagging
   until the bank books them
 - Per-account custom display name (`PATCH /accounts/{id}`) and manual drag-
-  and-drop ordering (`PUT /accounts/order`), both persisted and untouched by
-  reconnect syncs
+  and-drop ordering (`PUT /accounts/order`), both persisted and carried
+  forward across a bank reconnect by matching `iban` — Enable Banking's own
+  `account_id` isn't stable across a fresh authorization, `iban` is
 - Internal transfers between a user's own accounts (bank-labeled
   "Kontoregulering") and ISO 4217 "XXX" (no-currency) transactions are
-  excluded from the in/out/net currency totals
+  excluded from the in/out/net currency totals; a still-pending "XXX"
+  transaction (no currency assigned yet) displays as the account's own
+  currency rather than the literal code, and is still included in that
+  account's live balance adjustment
+- Dashboard charts (overview balance history, per-account activity) support
+  hover — a tooltip shows the exact balance and date at any point
 - In-memory storage only for short-lived state (pending bank authorizations
   mid-handshake)
 - Environment-based configuration using Pydantic Settings
@@ -215,20 +221,33 @@ GET /api/v1/connections/callback
 
 Reached only via Enable Banking's own browser redirect (never called via
 `fetch`), so every outcome — success or failure — redirects the browser to
-`/app/?connection=<status>` rather than returning JSON. On success it:
+`/app/?connection=<status>` rather than returning JSON. It responds
+immediately — it doesn't wait for the transaction backfill (see below), so
+the redirect isn't stuck behind however long that takes. On success it:
 
 - validates the authorization state
 - exchanges the authorization code
 - resolves (or creates) the `Bank` row and persists the `BankConnection`
+  with `status="active"` immediately — the connection and its accounts are
+  usable right away, before any transaction history has synced
 - marks the user's previous active connection **to that same bank** (if any)
   `"superseded"` — connections to other banks are left active, so a user can
   hold several simultaneous bank connections
 - upserts one `BankAccount` row per account returned in the session, keyed on
   `account_id` (IBAN, name, currency, cash account type, servicer BIC — all
-  available from the session-creation response, no extra API call needed)
-- backfills 730 days of transaction history and an initial balance snapshot
-  per account (Enable Banking's `date_from` has no documented default when
-  omitted — observed silently defaulting to ~30 days on at least one ASPSP)
+  available from the session-creation response, no extra API call needed),
+  carrying forward any existing `display_name`/`sort_order` matched by `iban`
+- queues the transaction/balance backfill as a background task
+  (`backfill_bank_connection`) and returns — 730 days of transaction history
+  and an initial balance snapshot per account (Enable Banking's `date_from`
+  has no documented default when omitted — observed silently defaulting to
+  ~30 days on at least one ASPSP), each account synced concurrently rather
+  than one at a time. Each account's own `sync_status`/`last_synced_at`
+  (null until its backfill finishes, `"ok"`/`"error"` after) is how
+  `GET /overview` reports per-account progress — a fast account (few
+  transactions) shows up before a slow one finishes, rather than the whole
+  dashboard waiting on the slowest account. The dashboard polls while any
+  account is still unsynced.
 
 ---
 
@@ -307,10 +326,13 @@ and persists each one's position as `sort_order`, also reconnect-safe.
 - Only pending bank authorizations (mid-handshake, short-lived) are still
   in-memory. Users, banks, bank connections, bank accounts, and transactions
   all persist to Postgres.
-- The legacy `GET /accounts`, `/accounts/{id}`, `/balances` still fetch live
-  from Enable Banking on every request rather than the cached/persisted data
-  `/overview` uses — kept for now since nothing in the dashboard calls them,
-  but they'd need the same multi-connection/caching treatment before real use.
+- The legacy `GET /accounts/{id}`, `/balances`, `/transactions` still fetch
+  live from Enable Banking on every request rather than the cached/persisted
+  data `/overview` uses — kept for now since nothing in the dashboard calls
+  them, but they'd need the same caching treatment before real use. They are
+  ownership-checked across all of a user's connections, unlike the bare
+  `GET /accounts` (list) endpoint, which is still scoped to a single
+  connection (the newest active one) rather than the multi-bank model.
 - Internal-transfer detection (`GET /overview`'s currency totals) relies on
   the bank's own "Kontoregulering" label — a transfer to an account we don't
   track (e.g. a credit card or another bank entirely) has no such label and

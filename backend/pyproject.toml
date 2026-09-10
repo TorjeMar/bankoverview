@@ -40,6 +40,13 @@ packages = ["src/app"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# app.database's async engine is a module-level global, created once under
+# whatever event loop is active at import time — the default per-test loop
+# scope tears that loop down after each test and the next test's asyncpg
+# connections end up "attached to a different loop". One shared loop for
+# the whole run matches how the engine is actually used in production.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 
 [tool.ruff]
 target-version = "py312"

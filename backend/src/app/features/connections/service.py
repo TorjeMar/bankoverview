@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 
 import requests
@@ -5,6 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.database import async_session_factory
 from app.features.accounts import repository as accounts_repository
 from app.features.accounts.service import sync_account_balance, sync_transactions_for_account
 from app.features.connections import repository
@@ -20,13 +22,18 @@ from app.integrations.enable_banking.schemas import CreatedEnableBankingSession
 BACKFILL_HISTORY = timedelta(days=730)
 
 
-async def save_bank_connection(
+async def create_bank_connection(
     db: AsyncSession,
     user_id: str,
     session: CreatedEnableBankingSession,
     bank_name: str | None = None,
     bank_country: str | None = None,
 ) -> BankConnectionModel:
+    # Fast path only — creates the connection/account rows and returns.
+    # The transaction/balance backfill is comparatively slow (paginated
+    # Enable Banking calls per account) and runs separately in
+    # backfill_bank_connection so the OAuth callback isn't stuck waiting
+    # on it before it can redirect the browser back.
     bank = await repository.get_or_create_bank(
         db,
         name=bank_name or settings.aspsp_name,
@@ -51,6 +58,7 @@ async def save_bank_connection(
         db, user_id, bank.bank_id, connection.connection_id
     )
 
+    customizations = await accounts_repository.get_customizations_by_iban(db, user_id)
     accounts = [
         {
             "account_id": account.uid,
@@ -60,24 +68,38 @@ async def save_bank_connection(
             "currency": account.currency,
             "cash_account_type": account.cash_account_type,
             "bic": account.account_servicer.bic_fi if account.account_servicer else None,
+            **customizations.get(account.account_id.iban, {}),
         }
         for account in session.accounts
     ]
 
     await accounts_repository.upsert_bank_accounts(db, accounts)
 
-    for account in session.accounts:
-        await sync_transactions_for_account(
-            db, account.uid, since=date.today() - BACKFILL_HISTORY
-        )
-        try:
-            await sync_account_balance(db, account.uid)
-        except (requests.RequestException, ValidationError):
-            await accounts_repository.update_account_balance(
-                db, account.uid, sync_status="error"
-            )
-
     return connection
+
+
+async def backfill_bank_connection(account_uids: list[str]) -> None:
+    # Runs as a FastAPI background task, after the callback has already
+    # responded — the connection is already "active" and visible in
+    # /overview at this point; each account just carries its own
+    # sync_status/last_synced_at (null until this finishes for it), so the
+    # dashboard can show accounts as they individually finish instead of
+    # gating the whole connection on the slowest one. Each account gets its
+    # own session so they can run concurrently: a single AsyncSession isn't
+    # safe for concurrent use.
+    async def sync_one(account_uid: str) -> None:
+        async with async_session_factory() as account_db:
+            try:
+                await sync_transactions_for_account(
+                    account_db, account_uid, since=date.today() - BACKFILL_HISTORY
+                )
+                await sync_account_balance(account_db, account_uid)
+            except (requests.RequestException, ValidationError):
+                await accounts_repository.update_account_balance(
+                    account_db, account_uid, sync_status="error"
+                )
+
+    await asyncio.gather(*(sync_one(uid) for uid in account_uids))
 
 async def revoke_bank_connection(db: AsyncSession, connection: BankConnectionModel) -> None:
     try:

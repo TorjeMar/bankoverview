@@ -147,6 +147,12 @@ def _pending_adjustment(transactions: list, account_id: str) -> Decimal:
     for transaction in transactions:
         if transaction.account_id != account_id or transaction.status != "PDNG":
             continue
+        # Enable Banking tags some still-processing transfers "XXX" (no
+        # currency assigned yet) even though the amount is already in the
+        # account's own currency and already reflected in the bank's own
+        # real-time balance — confirmed against the actual bank balance, so
+        # don't exclude it here (unlike the cross-account currency-totals
+        # grouping, where the real currency genuinely isn't knowable yet).
         if transaction.credit_debit_indicator == "CRDT":
             total += transaction.amount
         else:

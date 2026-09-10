@@ -62,6 +62,33 @@ async def get_account_owned_by_user(
     return result.scalar_one_or_none()
 
 
+async def get_customizations_by_iban(db: AsyncSession, user_id: str) -> dict[str, dict[str, Any]]:
+    # Enable Banking's account_id (uid) isn't stable across a bank
+    # reconnect — a fresh authorization mints new uids for the same
+    # physical accounts. iban is the actually-stable identity, so
+    # rename/reorder gets carried forward by matching on it.
+    result = await db.execute(
+        select(BankAccountModel.iban, BankAccountModel.display_name, BankAccountModel.sort_order)
+        .join(
+            BankConnectionModel, BankAccountModel.connection_id == BankConnectionModel.connection_id
+        )
+        .where(
+            BankConnectionModel.user_id == user_id,
+            BankAccountModel.iban.is_not(None),
+            or_(
+                BankAccountModel.display_name.is_not(None),
+                BankAccountModel.sort_order.is_not(None),
+            ),
+        )
+        .order_by(BankConnectionModel.created_at.desc())
+    )
+    customizations: dict[str, dict[str, Any]] = {}
+    for iban, display_name, sort_order in result.all():
+        if iban not in customizations:
+            customizations[iban] = {"display_name": display_name, "sort_order": sort_order}
+    return customizations
+
+
 async def get_all_owned_by_user(db: AsyncSession, user_id: str) -> list[BankAccountModel]:
     result = await db.execute(
         select(BankAccountModel)

@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import uuid4
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse
@@ -23,8 +23,9 @@ from app.features.connections.schemas import (
     StartAuthorizationResponse,
 )
 from app.features.connections.service import (
+    backfill_bank_connection,
+    create_bank_connection,
     revoke_bank_connection,
-    save_bank_connection,
     to_bank_connection_response,
 )
 from app.integrations.enable_banking.client import (
@@ -149,6 +150,7 @@ async def callback(
     state: str,
     code: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> RedirectResponse:
     # Reached only via a full-page browser redirect from Enable Banking
     # (never called via fetch), so every exit has to land the user back in
@@ -177,12 +179,16 @@ async def callback(
             code=code,
         )
 
-        await save_bank_connection(
+        await create_bank_connection(
             db=db,
             user_id=pending_auth.user_id,
             session=session,
             bank_name=pending_auth.bank_name,
             bank_country=pending_auth.bank_country,
+        )
+        background_tasks.add_task(
+            backfill_bank_connection,
+            [account.uid for account in session.accounts],
         )
 
     except requests.RequestException:
