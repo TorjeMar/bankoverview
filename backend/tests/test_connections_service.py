@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_factory
+from app.features.accounts import service as accounts_service
 from app.features.accounts.models import BankAccountModel
 from app.features.auth.models import UserModel
 from app.features.connections.models import BankConnectionModel
@@ -18,6 +19,8 @@ from app.integrations.enable_banking.schemas import (
     CreatedEnableBankingSession,
     EnableBankingAccess,
     EnableBankingAccount,
+    EnableBankingBalance,
+    EnableBankingTransactions,
 )
 
 
@@ -42,8 +45,22 @@ async def test_user(db: AsyncSession) -> AsyncGenerator[UserModel]:
 
 @pytest.mark.asyncio
 async def test_save_bank_connection_persists_connection_and_accounts(
-    db: AsyncSession, test_user: UserModel
+    db: AsyncSession, test_user: UserModel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # save_bank_connection also syncs transactions/balances for each account
+    # against the real Enable Banking API — stub those out so this test
+    # never makes a network call for a fake account id.
+    monkeypatch.setattr(
+        accounts_service,
+        "retrieve_account_transactions",
+        lambda **kwargs: EnableBankingTransactions(transactions=[], continuation_key=None),
+    )
+    monkeypatch.setattr(
+        accounts_service,
+        "retrieve_account_balances",
+        lambda **kwargs: EnableBankingBalance(balances=[]),
+    )
+
     fake_session = CreatedEnableBankingSession(
         session_id="fake-session-id",
         access=EnableBankingAccess(valid_until=datetime.now(UTC) + timedelta(days=10)),
