@@ -10,6 +10,16 @@ from app.core.config import settings
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+class NoCacheStaticFiles(StaticFiles):
+    # Browsers may reuse a cached JS/HTML asset without even a conditional
+    # request — this dashboard changes daily during development, so force
+    # revalidation on every load instead of chasing "it's stale" reports.
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def create_app() -> FastAPI:
     application = FastAPI(
         title="Personal Finance Dashboard API",
@@ -24,7 +34,7 @@ def create_app() -> FastAPI:
     application.include_router(api_router)
     application.mount(
         "/app",
-        StaticFiles(directory=STATIC_DIR / "dashboard", html=True),
+        NoCacheStaticFiles(directory=STATIC_DIR / "dashboard", html=True),
         name="dashboard-ui",
     )
 
