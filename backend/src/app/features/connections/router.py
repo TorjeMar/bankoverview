@@ -6,17 +6,20 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import RedirectResponse
 
 from app.core.config import settings
 from app.database import get_db, pending_authorizations
 from app.features.accounts import repository as accounts_repository
-from app.features.auth.router import get_current_user
+from app.features.auth.router import get_current_user, verify_csrf
 from app.features.auth.schemas import UserSession
 from app.features.connections import repository
 from app.features.connections.models import BankConnectionModel
 from app.features.connections.schemas import (
+    BankOption,
     CallbackResponse,
     PendingAuthorization,
+    StartAuthorizationRequest,
     StartAuthorizationResponse,
 )
 from app.features.connections.service import (
@@ -27,6 +30,7 @@ from app.features.connections.service import (
 from app.integrations.enable_banking.client import (
     create_bank_authorization,
     exchange_authorization_code,
+    list_aspsps,
 )
 
 router = APIRouter(
@@ -53,29 +57,71 @@ async def get_bank_connection(
     return connection
 
 
+async def get_connection_by_id(
+    connection_id: str,
+    current_user: Annotated[UserSession, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> BankConnectionModel:
+    connection = await repository.get_by_id_for_user(db, current_user.user_id, connection_id)
+
+    if connection is None or connection.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Bank connection not found",
+        )
+
+    return connection
+
+
+@router.get("/banks", response_model=list[BankOption], summary="List connectable banks")
+def list_banks(
+    current_user: Annotated[UserSession, Depends(get_current_user)],
+) -> list[BankOption]:
+    try:
+        aspsps = list_aspsps(settings, country=settings.aspsp_country)
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to list banks: {exc}",
+        ) from exc
+
+    return [
+        BankOption(name=a["name"], country=a.get("country", settings.aspsp_country))
+        for a in aspsps
+    ]
+
+
 @router.post(
     "/start",
     response_model=StartAuthorizationResponse,
     summary="Start bank authorization",
+    dependencies=[Depends(verify_csrf)],
 )
 def start_auth(
     current_user: Annotated[
         UserSession,
         Depends(get_current_user),
     ],
+    body: StartAuthorizationRequest | None = None,
 ) -> StartAuthorizationResponse:
     state = str(uuid4())
+    bank_name = (body.bank_name if body else None) or settings.aspsp_name
+    bank_country = (body.bank_country if body else None) or settings.aspsp_country
 
     pending_authorizations[state] = PendingAuthorization(
         user_id=current_user.user_id,
         created_at=datetime.now(UTC),
         status="pending",
+        bank_name=bank_name,
+        bank_country=bank_country,
     )
 
     try:
         authorization_url = create_bank_authorization(
             settings=settings,
             state=state,
+            aspsp_name=bank_name,
+            aspsp_country=bank_country,
         )
     except requests.RequestException as exc:
         pending_authorizations.pop(state, None)
@@ -97,27 +143,23 @@ def start_auth(
 
 @router.get(
     "/callback",
-    response_model=CallbackResponse,
     summary="Handle bank authorization callback",
 )
 async def callback(
     state: str,
     code: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> CallbackResponse:
+) -> RedirectResponse:
+    # Reached only via a full-page browser redirect from Enable Banking
+    # (never called via fetch), so every exit has to land the user back in
+    # the app — never a raw JSON error response.
     pending_auth = pending_authorizations.get(state)
 
     if pending_auth is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired state parameter",
-        )
+        return RedirectResponse(url="/app/?connection=invalid_state")
 
     if pending_auth.status != "pending":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Authorization state has already been consumed",
-        )
+        return RedirectResponse(url="/app/?connection=invalid_state")
 
     authorization_age = (
         datetime.now(UTC) - pending_auth.created_at
@@ -125,10 +167,7 @@ async def callback(
 
     if authorization_age > timedelta(minutes=10):
         pending_authorizations.pop(state, None)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Authorization state has expired",
-        )
+        return RedirectResponse(url="/app/?connection=invalid_state")
 
     pending_auth.status = "processing"
 
@@ -138,53 +177,38 @@ async def callback(
             code=code,
         )
 
-        connection = await save_bank_connection(
+        await save_bank_connection(
             db=db,
             user_id=pending_auth.user_id,
             session=session,
+            bank_name=pending_auth.bank_name,
+            bank_country=pending_auth.bank_country,
         )
 
-    except requests.RequestException as exc:
+    except requests.RequestException:
         pending_authorizations.pop(state, None)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to exchange authorization code: {exc}",
-        ) from exc
+        return RedirectResponse(url="/app/?connection=provider_error")
 
-    except ValidationError as exc:
+    except ValidationError:
         pending_authorizations.pop(state, None)
+        return RedirectResponse(url="/app/?connection=malformed")
 
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "message": "Enable Banking returned invalid session data",
-                "errors": exc.errors(),
-            },
-        ) from exc
-
-    except ValueError as exc:
+    except ValueError:
         pending_authorizations.pop(state, None)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
+        return RedirectResponse(url="/app/?connection=provider_error")
 
     pending_authorizations.pop(state, None)
 
-    return CallbackResponse(
-        message="Bank connection established successfully",
-        connection=to_bank_connection_response(
-            connection, account_count=len(session.accounts)
-        ),
-    )
+    return RedirectResponse(url="/app/?connection=success")
 
 @router.delete(
-    "/revoke",
+    "/{connection_id}",
     response_model=CallbackResponse,
     summary="Revoke bank connection",
+    dependencies=[Depends(verify_csrf)],
 )
 async def revoke_connection(
-    connection: Annotated[BankConnectionModel, Depends(get_bank_connection)],
+    connection: Annotated[BankConnectionModel, Depends(get_connection_by_id)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> CallbackResponse:
     accounts = await accounts_repository.get_for_connection(db, connection.connection_id)
