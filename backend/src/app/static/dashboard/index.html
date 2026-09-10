@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/modernist-c361589d-59e2-470a-9040-39ac615558ab/styles.css">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap">
+  <script src="_ds/modernist-c361589d-59e2-470a-9040-39ac615558ab/_ds_bundle.js"></script>
+  <script src="api.js"></script>
+  <style>
+    body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
+    a { color: var(--color-accent-700); text-decoration: none; }
+    a:hover { color: var(--color-accent); text-decoration: underline; }
+    @keyframes bo-spin { to { transform: rotate(360deg); } }
+    @keyframes bo-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);font-size:14px">
+
+  <sc-if value="{{ isAuthed }}" hint-placeholder-val="{{ true }}">
+    <header class="nav" style="padding:14px 32px;gap:32px;position:sticky;top:0;background:var(--color-bg);z-index:5">
+      <div class="nav-brand" style="letter-spacing:-0.02em">BANKOVERVIEW</div>
+      <nav style="display:flex;gap:28px;align-items:center">
+        <button onClick="{{ goOverview }}" style="border:0;background:none;padding:0 0 4px;font:inherit;font-size:14px;color:inherit;cursor:pointer;position:relative">Overview
+          <sc-if value="{{ navOverview }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--color-accent)"></span></sc-if>
+        </button>
+        <button onClick="{{ goTx }}" style="border:0;background:none;padding:0 0 4px;font:inherit;font-size:14px;color:inherit;cursor:pointer;position:relative">Transactions
+          <sc-if value="{{ navTx }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--color-accent)"></span></sc-if>
+        </button>
+        <button onClick="{{ goSettings }}" style="border:0;background:none;padding:0 0 4px;font:inherit;font-size:14px;color:inherit;cursor:pointer;position:relative">Settings
+          <sc-if value="{{ navSettings }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--color-accent)"></span></sc-if>
+        </button>
+      </nav>
+      <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--color-neutral-700)">
+        <span class="tag tag-neutral" style="text-transform:uppercase;letter-spacing:0.08em">{{ modeLabel }}</span>
+        <span>{{ bankName }} · {{ userEmail }}</span>
+        <button onClick="{{ logout }}" class="btn btn-ghost" style="font-size:12px">Log out</button>
+      </div>
+    </header>
+  </sc-if>
+
+  <sc-if value="{{ hasCallbackNotice }}" hint-placeholder-val="false">
+    <div role="status" style="max-width:1120px;margin:20px auto 0;padding:12px 32px;border-left:3px solid var(--color-accent);background:var(--color-surface)">{{ callbackNotice }}</div>
+  </sc-if>
+
+  <!-- ── LOGIN ─────────────────────────────────────────────── -->
+  <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+    <section style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);min-height:100vh">
+      <div style="padding:56px 48px;display:flex;flex-direction:column;justify-content:space-between;border-right:2px solid var(--color-divider)">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:18px;letter-spacing:-0.02em">BANKOVERVIEW</div>
+        <div style="max-width:560px">
+          <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent);margin-bottom:20px">Personal finance overview</div>
+          <h1 style="margin:0;font-size:clamp(40px,5.2vw,68px);line-height:0.98;letter-spacing:-0.03em">Every account,<br>one balance,<br>no spreadsheet.</h1>
+          <p style="margin:24px 0 32px;font-size:16px;line-height:1.5;max-width:44ch;color:var(--color-neutral-800);text-wrap:pretty">Sign in, connect your bank, and see balances and activity without mixing currencies.</p>
+          <a href="{{ loginHref }}" onClick="{{ login }}" class="btn btn-primary" style="font-size:15px;padding:12px 18px;justify-content:flex-start">Log in with Google</a>
+          <p style="margin:16px 0 0;font-size:12px;color:var(--color-neutral-700)">Full-page redirect to Google. Consent sets an HTTP-only session cookie.</p>
+        </div>
+        <div style="display:flex;gap:32px;font-size:12px;color:var(--color-neutral-700)">
+          <span>Read-only bank access</span><span>Revocable any time</span><span>PSD2 via Enable Banking</span>
+        </div>
+      </div>
+      <div style="padding:56px 48px;display:flex;flex-direction:column;justify-content:center;gap:0">
+        <div style="border-top:2px solid var(--color-divider);padding:20px 0">
+          <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700)">01</div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:20px;margin-top:6px">Log in with Google</div>
+          <div style="margin-top:4px;color:var(--color-neutral-800)">GET /api/v1/login → Google consent → session cookie.</div>
+        </div>
+        <div style="border-top:2px solid var(--color-divider);padding:20px 0">
+          <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700)">02</div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:20px;margin-top:6px">Connect your bank</div>
+          <div style="margin-top:4px;color:var(--color-neutral-800)">Read-only consent, revocable from Settings.</div>
+        </div>
+        <div style="border-top:2px solid var(--color-divider);border-bottom:2px solid var(--color-divider);padding:20px 0">
+          <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-neutral-700)">03</div>
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:20px;margin-top:6px">Read your picture</div>
+          <div style="margin-top:4px;color:var(--color-neutral-800)">Balance over time, counterparties, recent activity.</div>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <!-- ── EMPTY STATE / CONNECT ─────────────────────────────── -->
+  <sc-if value="{{ isConnect }}" hint-placeholder-val="{{ true }}">
+    <section style="max-width:1120px;margin:0 auto;padding:72px 32px">
+      <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent)">No bank connected</div>
+      <h1 style="margin:16px 0 0;font-size:clamp(34px,4.4vw,56px);line-height:1.0;letter-spacing:-0.03em;max-width:20ch">Nothing to show until a bank is connected.</h1>
+      <p style="margin:20px 0 0;font-size:16px;line-height:1.5;max-width:52ch;color:var(--color-neutral-800);text-wrap:pretty">Connecting takes you to your bank through Enable Banking. You approve read-only access; we never see your bank password.</p>
+      <div style="display:flex;gap:12px;margin:32px 0 0">
+        <button onClick="{{ startConnect }}" class="btn btn-primary" style="font-size:15px;padding:12px 18px;justify-content:flex-start">Connect your bank</button>
+        <button onClick="{{ retryLoad }}" class="btn btn-secondary" style="font-size:15px;padding:12px 18px">Check again</button>
+      </div>
+      <hr class="hr" style="margin:48px 0 0">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div style="padding:24px 24px 24px 0;border-right:2px solid var(--color-divider)">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">Read-only</div>
+          <div style="margin-top:6px;color:var(--color-neutral-800)">Balances and transactions. No payments, no moving money.</div>
+        </div>
+        <div style="padding:24px;border-right:2px solid var(--color-divider)">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">Time-limited consent</div>
+          <div style="margin-top:6px;color:var(--color-neutral-800)">The actual bank expiry is shown after connection.</div>
+        </div>
+        <div style="padding:24px 0 24px 24px">
+          <div style="font-family:var(--font-heading);font-weight:800;font-size:17px">One click out</div>
+          <div style="margin-top:6px;color:var(--color-neutral-800)">Disconnect revokes consent at the bank, not just here.</div>
+        </div>
+      </div>
+      <hr class="hr" style="margin:0">
+    </section>
+  </sc-if>
+
+  <!-- ── REDIRECTING TO THE BANK ───────────────────────────── -->
+  <sc-if value="{{ isConnecting }}" hint-placeholder-val="{{ true }}">
+    <section style="max-width:720px;margin:0 auto;padding:96px 32px">
+      <div style="width:28px;height:28px;border:2px solid var(--color-divider);border-top-color:var(--color-accent);animation:bo-spin 0.9s linear infinite"></div>
+      <h1 style="margin:28px 0 0;font-size:36px;line-height:1.05;letter-spacing:-0.02em">Sending you to your bank…</h1>
+      <p style="margin:16px 0 0;color:var(--color-neutral-800);font-size:15px;line-height:1.5">Approve read-only access in the bank's own window. You'll land back here when it's done.</p>
+      <div style="margin-top:28px;border:1px solid var(--color-divider);padding:14px;background:var(--color-surface);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--color-neutral-800)">{{ authUrl }}</div>
+    </section>
+  </sc-if>
+
+  <!-- ── SYNCING ───────────────────────────────────────────── -->
+  <sc-if value="{{ isSyncing }}" hint-placeholder-val="{{ true }}">
+    <section style="max-width:1120px;margin:0 auto;padding:72px 32px">
+      <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent)">Connected · syncing</div>
+      <h1 style="margin:14px 0 32px;font-size:clamp(30px,3.6vw,44px);line-height:1.02;letter-spacing:-0.02em">Preparing your cached accounts.</h1>
+      <hr class="hr" style="margin:0">
+      <sc-for list="{{ syncSteps }}" as="s" hint-placeholder-count="3">
+        <div style="display:flex;align-items:baseline;gap:20px;padding:18px 0;border-bottom:1px solid var(--color-divider)">
+          <span style="font-size:11px;letter-spacing:0.12em;color:var(--color-neutral-600);min-width:28px">{{ s.num }}</span>
+          <span style="font-family:var(--font-heading);font-weight:800;font-size:18px;flex:1">{{ s.label }}</span>
+          <span style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-700)">{{ s.status }}</span>
+        </div>
+      </sc-for>
+      <div style="margin-top:28px;height:2px;background:var(--color-neutral-300)">
+        <div style="height:2px;background:var(--color-accent);width:{{ syncPct }}%;transition:width .5s ease"></div>
+      </div>
+    </section>
+  </sc-if>
+
+  <!-- ── ERROR / EXPIRED CONSENT ───────────────────────────── -->
+  <sc-if value="{{ isError }}" hint-placeholder-val="{{ true }}">
+    <section style="max-width:820px;margin:0 auto;padding:80px 32px">
+      <div style="border-left:0;border-top:2px solid var(--color-accent);padding-top:22px">
+        <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent)">{{ errorKicker }}</div>
+        <h1 style="margin:14px 0 0;font-size:clamp(30px,3.8vw,46px);line-height:1.03;letter-spacing:-0.02em;max-width:24ch">{{ errorTitle }}</h1>
+        <p style="margin:18px 0 0;font-size:16px;line-height:1.5;color:var(--color-neutral-800);max-width:56ch;text-wrap:pretty">{{ errorBody }}</p>
+        <div style="margin-top:24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--color-neutral-700)">{{ errorDetail }}</div>
+        <div style="display:flex;gap:12px;margin-top:32px">
+          <button onClick="{{ startConnect }}" class="btn btn-primary" style="font-size:15px;padding:12px 18px;justify-content:flex-start">Reconnect bank</button>
+          <button onClick="{{ retryLoad }}" class="btn btn-secondary" style="font-size:15px;padding:12px 18px">Try again</button>
+        </div>
+      </div>
+      <hr class="hr" style="margin:40px 0 0">
+      <div style="color:var(--color-neutral-700);font-size:13px">Last successful sync {{ lastSync }}. Balances shown elsewhere in the app may be stale until the connection is restored.</div>
+    </section>
+  </sc-if>
+
+  <!-- ── DASHBOARD ─────────────────────────────────────────── -->
+  <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+    <section style="max-width:1360px;margin:0 auto;padding:40px 32px 72px;animation:bo-fade .25s ease">
+
+      <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent)">Balances by currency · {{ accountCount }} accounts</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px;margin-top:14px">
+        <sc-for list="{{ currencyCards }}" as="c" hint-placeholder-count="2">
+          <div style="border-top:2px solid var(--color-divider);padding-top:16px">
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:40px;font-variant-numeric:tabular-nums">{{ c.balance }} <span style="font-size:15px;color:var(--color-neutral-700)">{{ c.currency }}</span></div>
+            <div style="margin-top:12px;font-size:12px;color:var(--color-neutral-700)">In {{ c.inflow }} · Out {{ c.outflow }} · Net {{ c.net }} · {{ periodLabel }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ hasPartialFailures }}" hint-placeholder-val="false">
+        <div style="margin-top:20px;border-left:3px solid var(--color-accent);padding:10px 14px;background:var(--color-surface)">{{ partialFailureText }}</div>
+      </sc-if>
+
+      <hr class="hr" style="margin:32px 0 0">
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0 -24px">
+        <sc-for list="{{ accountRows }}" as="a" hint-placeholder-count="3">
+          <button onClick="{{ a.open }}" style="position:relative;text-align:left;font:inherit;color:inherit;background:none;border:0;padding:22px 24px;cursor:pointer;display:block;width:100%" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+            <sc-if value="{{ a.notFirst }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--color-divider)"></span></sc-if>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-family:var(--font-heading);font-weight:800;font-size:16px">{{ a.product }}</span>
+              <span class="tag tag-neutral" style="font-size:10px;letter-spacing:0.06em">{{ a.typeLabel }}</span>
+            </div>
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:28px;margin-top:10px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">{{ a.balanceStr }}</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ a.iban }}</div>
+            <div style="margin-top:6px;font-size:11px;color:var(--color-neutral-700)">{{ a.freshness }}</div>
+            <div style="margin-top:12px;height:2px;background:var(--color-neutral-300)">
+              <div style="height:2px;background:var(--color-accent);width:{{ a.share }}%"></div>
+            </div>
+          </button>
+        </sc-for>
+      </div>
+
+      <hr class="hr" style="margin:0 0 32px">
+
+      <div style="display:grid;grid-template-columns:minmax(0,2.1fr) minmax(0,1fr);gap:40px;align-items:start">
+
+        <div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap">
+            <div>
+              <h2 style="margin:0;font-size:22px;letter-spacing:-0.02em">Balance over time</h2>
+              <div style="margin-top:6px;font-size:12px;color:var(--color-neutral-700)">Reconstructed backwards from today's booked balance</div>
+            </div>
+            <div style="display:flex;gap:0;border:1px solid var(--color-divider)">
+              <button onClick="{{ setP30 }}" style="font:inherit;font-size:12px;padding:7px 13px;border:0;cursor:pointer;background:{{ p30bg }};color:{{ p30fg }}">30 days</button>
+              <button onClick="{{ setP90 }}" style="font:inherit;font-size:12px;padding:7px 13px;border:0;border-left:1px solid var(--color-divider);cursor:pointer;background:{{ p90bg }};color:{{ p90fg }}">90 days</button>
+            </div>
+          </div>
+          <div style="margin-top:20px">
+            <svg viewBox="0 0 960 250" preserveAspectRatio="none" style="width:100%;height:250px;display:block;overflow:visible">
+              <sc-for list="{{ chart.yLabels }}" as="g" hint-placeholder-count="3">
+                <g>
+                  <line x1="64" x2="956" y1="{{ g.y }}" y2="{{ g.y }}" stroke="var(--color-neutral-300)" stroke-width="1"></line>
+                  <text x="0" y="{{ g.ty }}" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif">{{ g.label }}</text>
+                </g>
+              </sc-for>
+              <path d="{{ chart.areaPath }}" fill="var(--color-accent-200)" opacity="0.55"></path>
+              <polyline points="{{ chart.linePoints }}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linejoin="round"></polyline>
+              <circle cx="{{ chart.lastX }}" cy="{{ chart.lastY }}" r="4" fill="var(--color-accent)"></circle>
+              <sc-for list="{{ chart.xLabels }}" as="t" hint-placeholder-count="5">
+                <text x="{{ t.x }}" y="244" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif" text-anchor="middle">{{ t.label }}</text>
+              </sc-for>
+            </svg>
+          </div>
+          <div style="display:flex;gap:40px;margin-top:18px;padding-top:16px;border-top:1px solid var(--color-divider)">
+            <div><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700)">Low</div><div style="font-variant-numeric:tabular-nums;font-weight:600;margin-top:4px">{{ chart.minStr }}</div></div>
+            <div><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700)">High</div><div style="font-variant-numeric:tabular-nums;font-weight:600;margin-top:4px">{{ chart.maxStr }}</div></div>
+            <div><div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700)">Change</div><div style="font-variant-numeric:tabular-nums;font-weight:600;margin-top:4px">{{ chart.changeStr }}</div></div>
+          </div>
+        </div>
+
+        <div>
+          <h2 style="margin:0;font-size:22px;letter-spacing:-0.02em">Where it went</h2>
+          <div style="margin-top:6px;font-size:12px;color:var(--color-neutral-700)">Top counterparties, {{ periodLabel }}</div>
+          <div style="margin-top:20px;border-top:2px solid var(--color-divider)">
+            <sc-for list="{{ counterparties }}" as="c" hint-placeholder-count="6">
+              <div style="padding:14px 0;border-bottom:1px solid var(--color-divider)">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline">
+                  <span style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.name }}</span>
+                  <span style="font-variant-numeric:tabular-nums;font-weight:600">{{ c.amountStr }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+                  <div style="flex:1;height:6px;background:var(--color-neutral-200)">
+                    <div style="height:6px;background:var(--color-accent);width:{{ c.pct }}%"></div>
+                  </div>
+                  <span style="font-size:11px;color:var(--color-neutral-700);min-width:52px;text-align:right">{{ c.countLabel }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:14px;font-size:12px;color:var(--color-neutral-700);line-height:1.5">Grouped from the cached payment text supplied by the bank.</div>
+        </div>
+      </div>
+
+      <hr class="hr" style="margin:40px 0 0">
+
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:20px;padding-top:8px">
+        <h2 style="margin:0;font-size:22px;letter-spacing:-0.02em">Recent activity</h2>
+        <button onClick="{{ goTx }}" class="btn btn-ghost" style="font-size:13px">View all {{ txCount }} →</button>
+      </div>
+      <table class="table" style="margin-top:14px">
+        <thead><tr><th style="width:110px">Date</th><th>Description</th><th style="width:150px">Account</th><th style="width:150px;text-align:right">Amount</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ recent }}" as="t" hint-placeholder-count="8">
+            <tr>
+              <td style="color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ t.dateStr }}</td>
+              <td style="font-weight:600">{{ t.desc }}</td>
+              <td style="color:var(--color-neutral-700)">{{ t.account }}</td>
+              <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600">
+                <sc-if value="{{ t.isIn }}" hint-placeholder-val="{{ true }}"><span style="color:#0a8f52">{{ t.amountStr }}</span></sc-if>
+                <sc-if value="{{ t.isOut }}" hint-placeholder-val="{{ true }}"><span>{{ t.amountStr }}</span></sc-if>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </section>
+  </sc-if>
+
+  <!-- ── ALL TRANSACTIONS ──────────────────────────────────── -->
+  <sc-if value="{{ isTransactions }}" hint-placeholder-val="{{ true }}">
+    <section style="max-width:1120px;margin:0 auto;padding:40px 32px 72px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap">
+        <div>
+          <h1 style="margin:0;font-size:38px;letter-spacing:-0.025em">Transactions</h1>
+          <div style="margin-top:8px;font-size:13px;color:var(--color-neutral-700)">{{ filteredCount }} of {{ txCount }} · {{ periodLabel }}</div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <input class="input" value="{{ query }}" onInput="{{ setQuery }}" placeholder="Search payment text" style="width:240px">
+          <div style="display:flex;border:1px solid var(--color-divider)">
+            <button onClick="{{ setDirAll }}" style="font:inherit;font-size:12px;padding:8px 13px;border:0;cursor:pointer;background:{{ dAllBg }};color:{{ dAllFg }}">All</button>
+            <button onClick="{{ setDirIn }}" style="font:inherit;font-size:12px;padding:8px 13px;border:0;border-left:1px solid var(--color-divider);cursor:pointer;background:{{ dInBg }};color:{{ dInFg }}">In</button>
+            <button onClick="{{ setDirOut }}" style="font:inherit;font-size:12px;padding:8px 13px;border:0;border-left:1px solid var(--color-divider);cursor:pointer;background:{{ dOutBg }};color:{{ dOutFg }}">Out</button>
+          </div>
+        </div>
+      </div>
+      <hr class="hr" style="margin:28px 0 0">
+      <sc-for list="{{ txGroups }}" as="g" hint-placeholder-count="4">
+        <div style="display:grid;grid-template-columns:150px minmax(0,1fr);gap:24px;padding:22px 0;border-bottom:1px solid var(--color-divider)">
+          <div>
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:15px">{{ g.dateStr }}</div>
+            <div style="margin-top:4px;font-size:12px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ g.netStr }}</div>
+          </div>
+          <div>
+            <sc-for list="{{ g.items }}" as="t" hint-placeholder-count="3">
+              <div style="display:flex;justify-content:space-between;gap:20px;padding:7px 0;align-items:baseline">
+                <span style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.desc }}</span>
+                <span style="font-size:12px;color:var(--color-neutral-700);min-width:110px">{{ t.account }}</span>
+                <span style="font-variant-numeric:tabular-nums;font-weight:600;min-width:120px;text-align:right">
+                  <sc-if value="{{ t.isIn }}" hint-placeholder-val="{{ true }}"><span style="color:#0a8f52">{{ t.amountStr }}</span></sc-if>
+                  <sc-if value="{{ t.isOut }}" hint-placeholder-val="{{ true }}"><span>{{ t.amountStr }}</span></sc-if>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+      <sc-if value="{{ noResults }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:56px 0;color:var(--color-neutral-700)">Nothing matches "{{ query }}" in this period.</div>
+      </sc-if>
+    </section>
+  </sc-if>
+
+  <!-- ── ACCOUNT DETAIL ────────────────────────────────────── -->
+  <sc-if value="{{ isAccount }}" hint-placeholder-val="{{ false }}">
+    <section style="max-width:1120px;margin:0 auto;padding:40px 32px 72px">
+      <button onClick="{{ goOverview }}" class="btn btn-ghost" style="font-size:13px;padding-left:0">← Overview</button>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:32px;flex-wrap:wrap;margin-top:16px">
+        <div>
+          <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent)">{{ acct.typeLabel }} · {{ bankName }}</div>
+          <h1 style="margin:12px 0 0;font-size:40px;letter-spacing:-0.025em">{{ acct.product }}</h1>
+          <div style="margin-top:8px;font-size:13px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ acct.iban }} · {{ acct.bic }}</div>
+        </div>
+        <div style="display:flex">
+          <div style="padding-right:28px;border-right:2px solid var(--color-divider)">
+            <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700)">Booked</div>
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:34px;margin-top:6px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">{{ acct.bookedStr }}</div>
+          </div>
+          <div style="padding-left:28px">
+            <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--color-neutral-700)">Available</div>
+            <div style="font-family:var(--font-heading);font-weight:800;font-size:34px;margin-top:6px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em">{{ acct.availableStr }}</div>
+          </div>
+        </div>
+      </div>
+      <hr class="hr" style="margin:32px 0">
+      <svg viewBox="0 0 960 200" preserveAspectRatio="none" style="width:100%;height:200px;display:block;overflow:visible">
+        <sc-for list="{{ acctChart.yLabels }}" as="g" hint-placeholder-count="3">
+          <g>
+            <line x1="64" x2="956" y1="{{ g.y }}" y2="{{ g.y }}" stroke="var(--color-neutral-300)" stroke-width="1"></line>
+            <text x="0" y="{{ g.ty }}" fill="var(--color-neutral-700)" font-size="11" font-family="Archivo, sans-serif">{{ g.label }}</text>
+          </g>
+        </sc-for>
+        <path d="{{ acctChart.areaPath }}" fill="var(--color-accent-200)" opacity="0.55"></path>
+        <polyline points="{{ acctChart.linePoints }}" fill="none" stroke="var(--color-accent)" stroke-width="2.5" stroke-linejoin="round"></polyline>
+      </svg>
+      <h2 style="margin:40px 0 0;font-size:22px;letter-spacing:-0.02em">Activity · {{ periodLabel }}</h2>
+      <table class="table" style="margin-top:14px">
+        <thead><tr><th style="width:110px">Date</th><th>Description</th><th style="width:100px">Status</th><th style="width:150px;text-align:right">Amount</th></tr></thead>
+        <tbody>
+          <sc-for list="{{ acctTx }}" as="t" hint-placeholder-count="10">
+            <tr>
+              <td style="color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ t.dateStr }}</td>
+              <td style="font-weight:600">{{ t.desc }}</td>
+              <td style="color:var(--color-neutral-700);font-size:12px">{{ t.status }}</td>
+              <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600">
+                <sc-if value="{{ t.isIn }}" hint-placeholder-val="{{ true }}"><span style="color:#0a8f52">{{ t.amountStr }}</span></sc-if>
+                <sc-if value="{{ t.isOut }}" hint-placeholder-val="{{ true }}"><span>{{ t.amountStr }}</span></sc-if>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </section>
+  </sc-if>
+
+  <!-- ── SETTINGS ──────────────────────────────────────────── -->
+  <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+    <section style="max-width:900px;margin:0 auto;padding:40px 32px 72px">
+      <h1 style="margin:0;font-size:38px;letter-spacing:-0.025em">Settings</h1>
+      <hr class="hr" style="margin:28px 0 0">
+      <div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;padding:26px 0;border-bottom:1px solid var(--color-divider)">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">Bank connection</div>
+        <div>
+          <div style="display:flex;align-items:center;gap:10px"><span class="tag tag-outline">{{ connectionStatus }}</span><span style="font-weight:600">{{ bankName }} · {{ bankCountry }}</span></div>
+          <div style="margin-top:10px;color:var(--color-neutral-800);line-height:1.6">{{ accountCount }} accounts · connected {{ connectedOn }} · consent valid until {{ validUntil }}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;padding:26px 0;border-bottom:1px solid var(--color-divider)">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">Session</div>
+        <div style="color:var(--color-neutral-800);line-height:1.6">Signed in as {{ userEmail }} via Google. This session can be revoked immediately.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:220px minmax(0,1fr);gap:32px;padding:26px 0;border-bottom:2px solid var(--color-divider)">
+        <div style="font-family:var(--font-heading);font-weight:800;font-size:16px">Disconnect</div>
+        <div>
+          <p style="margin:0;color:var(--color-neutral-800);line-height:1.6;max-width:56ch;text-wrap:pretty">Hides the connection immediately and queues provider revocation. Synced history is preserved.</p>
+          <div style="display:flex;gap:12px;margin-top:18px;flex-wrap:wrap">
+            <button onClick="{{ disconnect }}" class="btn btn-primary" style="justify-content:flex-start">Disconnect bank</button>
+            <button onClick="{{ requestSync }}" class="btn btn-secondary">Refresh cached data</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:0;right:0;top:0;height:2px;background:var(--color-accent);animation:bo-fade .2s ease"></div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;period&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [30, 90], &quot;default&quot;: 30, &quot;tsType&quot;: &quot;30 | 90&quot;, &quot;section&quot;: &quot;Dashboard&quot; }
+}">
+const NUM2 = new Intl.NumberFormat('nb-NO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const NUM0 = new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 });
+const DAY = new Intl.DateTimeFormat('nb-NO', { day: 'numeric', month: 'short' });
+const LONGDAY = new Intl.DateTimeFormat('nb-NO', { weekday: 'short', day: 'numeric', month: 'long' });
+
+const iso = (d) => d.toISOString().slice(0, 10);
+const parse = (s) => new Date(s + 'T00:00:00Z');
+const compact = (v) => (Math.abs(v) >= 1000 ? NUM0.format(Math.round(v / 1000)) + 'k' : NUM0.format(v));
+const signed = (n) => (n < 0 ? '−' : '+') + NUM2.format(Math.abs(n));
+
+// The cached transaction projection has payment text but no normalized counterparty.
+function counterpartyOf(text) {
+  return String(text || 'Ukjent')
+    .replace(/^VIPPS\*/i, '')
+    .replace(/^\*\d+\s*/, '')
+    .replace(/\s+P\d{3,}$/i, '')
+    .replace(/\s+\d{3,}$/, '')
+    .replace(/\s+AS$/i, '')
+    .trim() || 'Ukjent';
+}
+
+function buildChart(series, h, padT, padB) {
+  const n = series.length;
+  const x0 = 64, x1 = 950;
+  const vals = series.map((p) => p.balance);
+  let min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+  const span = max - min || Math.max(1, max * 0.02);
+  min -= span * 0.18; max += span * 0.18;
+  const X = (i) => x0 + (i * (x1 - x0)) / Math.max(1, n - 1);
+  const Y = (v) => padT + ((max - v) / (max - min)) * (h - padT - padB);
+  const pts = series.map((p, i) => X(i).toFixed(1) + ',' + Y(p.balance).toFixed(1));
+  const bottom = (h - padB).toFixed(1);
+  const ticks = [max - span * 0.18, (max + min) / 2, min + span * 0.18].map((v) => ({
+    y: Y(v).toFixed(1), ty: (Y(v) - 6).toFixed(1), label: compact(v),
+  }));
+  const step = Math.max(1, Math.round(n / 6));
+  const xLabels = series
+    .map((p, i) => ({ i, label: DAY.format(parse(p.date)) }))
+    .filter((p) => p.i % step === 0 || p.i === n - 1)
+    .map((p) => ({ x: X(p.i).toFixed(1), label: p.label }));
+  return {
+    linePoints: pts.join(' '),
+    areaPath: 'M' + pts.join(' L') + ' L' + X(n - 1).toFixed(1) + ',' + bottom + ' L' + x0 + ',' + bottom + ' Z',
+    lastX: X(n - 1).toFixed(1),
+    lastY: Y(vals[n - 1]).toFixed(1),
+    yLabels: ticks,
+    xLabels,
+    minStr: NUM0.format(Math.min.apply(null, vals)),
+    maxStr: NUM0.format(Math.max.apply(null, vals)),
+    changeStr: signed(vals[n - 1] - vals[0]),
+  };
+}
+
+function seriesFor(txs, endBalance, days) {
+  const net = {};
+  txs.forEach((t) => { net[t.date] = (net[t.date] || 0) + t.signed; });
+  const today = new Date();
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() - i);
+    dates.push(iso(d));
+  }
+  const out = new Array(dates.length);
+  let running = endBalance;
+  for (let i = dates.length - 1; i >= 0; i--) {
+    out[i] = { date: dates[i], balance: running };
+    running -= net[dates[i]] || 0;
+  }
+  return out;
+}
+
+class Component extends DCLogic {
+  state = {
+    screen: 'login', busy: false, accounts: [], selected: null,
+    query: '', dir: 'all', period: 30, authUrl: '', syncStep: 0,
+    error: null, connection: null, user: null, currencyTotals: [], partialFailures: [],
+    callbackResult: null,
+  };
+
+  componentDidMount() {
+    this.state.period = this.props.period === 90 ? 90 : 30;
+    this.api = window.BankApi.create('live');
+    this.setState({ screen: 'syncing' });
+    this.startSyncTicker();
+    const callbackResult = new URLSearchParams(window.location.search).get('connection');
+    if (callbackResult) {
+      this.setState({ callbackResult });
+      window.history.replaceState({}, '', '/app/');
+    }
+    this.load('dashboard');
+  }
+
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.pollTimer); }
+
+  /* ── data ─────────────────────────────────────────────── */
+
+  async load(target) {
+    clearTimeout(this.pollTimer);
+    this.setState({ busy: true, error: null });
+    try {
+      const [user, overview] = await Promise.all([
+        this.api.me(), this.api.overview(this.state.period),
+      ]);
+      const accounts = (overview.accounts || []).map((details) => {
+          const bal = details.balances || [];
+          const byType = {};
+          bal.forEach((b) => { byType[b.balance_type] = Number(b.balance_amount.amount); });
+          const booked = Number(details.current_balance || 0);
+          const uid = details.account_id;
+          return {
+            uid,
+            product: details.name || 'Account',
+            iban: details.iban || uid,
+            bic: '',
+            type: details.cash_account_type || 'CACC',
+            booked, currency: details.balance_currency || details.currency,
+            available: byType.ITAV != null ? byType.ITAV : booked,
+            freshness: details.last_synced_at,
+            syncStatus: details.sync_status,
+            txs: (overview.transactions || []).filter((t) => t.account_id === uid).map((t) => {
+              const amt = Number(t.amount);
+              const isIn = t.credit_debit_indicator === 'CRDT';
+              return {
+                id: t.transaction_id, date: t.booking_date, amount: amt, isIn,
+                signed: isIn ? amt : -amt, text: t.remittance_information, status: t.status,
+                currency: t.currency,
+              };
+            }),
+          };
+        });
+      const connection = overview.connection;
+      let screen = target || 'dashboard';
+      let error = null;
+      if (!connection || ['revoked', 'revocation_pending', 'superseded'].includes(connection.status)) screen = 'connect';
+      else if (connection.status === 'initializing') screen = 'syncing';
+      else if (connection.status === 'expired') { screen = 'error'; error = { kind: 'consent' }; }
+      const initializing = connection && connection.status === 'initializing';
+      if (!initializing) clearInterval(this.timer);
+      this.setState({
+        user, connection, accounts, error, busy: false, screen,
+        syncStep: initializing ? this.state.syncStep : 3,
+        currencyTotals: overview.currency_totals || [],
+        partialFailures: overview.partial_failures || [],
+      });
+      if (initializing) this.pollTimer = setTimeout(() => this.load('dashboard'), 1500);
+    } catch (e) {
+      clearInterval(this.timer);
+      if (e.status === 404) this.setState({ busy: false, screen: 'connect' });
+      else if (e.status === 401) this.setState({ busy: false, screen: 'login' });
+      else this.setState({ busy: false, screen: 'error', error: { kind: 'fetch', detail: e.detail || e.message } });
+    }
+  }
+
+  startSyncTicker() {
+    clearInterval(this.timer);
+    this.setState({ syncStep: 0 });
+    this.timer = setInterval(() => this.setState((s) => ({ syncStep: Math.min(3, s.syncStep + 1) })), 700);
+  }
+
+  /* ── flow ─────────────────────────────────────────────── */
+
+  onLogin = () => {
+    // Real full-page navigation to GET /api/v1/login — the browser follows
+    // the anchor's href itself; nothing to do here.
+  };
+
+  onStartConnect = async () => {
+    this.setState({ busy: true });
+    try {
+      const { authorization_url } = await this.api.startConnection();
+      window.location.assign(authorization_url);
+    } catch (e) {
+      this.setState({ busy: false, screen: 'error', error: { kind: 'fetch', detail: e.detail || e.message } });
+    }
+  };
+
+  onDisconnect = async () => {
+    this.setState({ busy: true });
+    try {
+      const res = await this.api.revokeConnection();
+      this.setState({ busy: false, screen: 'connect', accounts: [], connection: res.connection });
+    } catch (e) {
+      this.setState({ busy: false, screen: 'error', error: { kind: 'fetch', detail: e.detail || e.message } });
+    }
+  };
+
+  onLogout = async () => {
+    this.setState({ busy: true });
+    try { await this.api.logout(); } finally {
+      this.setState({ busy: false, screen: 'login', accounts: [], user: null, connection: null });
+    }
+  };
+
+  onRequestSync = async () => {
+    this.setState({ busy: true });
+    try { await this.api.sync(); await this.load('dashboard'); }
+    catch (e) { this.setState({ busy: false, error: { kind: 'fetch', detail: e.detail || e.message } }); }
+  };
+
+  /* ── derived ──────────────────────────────────────────── */
+
+  windowTxs() {
+    const cut = new Date();
+    cut.setUTCDate(cut.getUTCDate() - this.state.period + 1);
+    const cutIso = iso(cut);
+    const rows = [];
+    this.state.accounts.forEach((a) => {
+      a.txs.forEach((t) => { if (t.date >= cutIso) rows.push({ ...t, account: a.product }); });
+    });
+    return rows.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const screen = s.screen;
+    const accounts = s.accounts;
+    const primaryCurrency = s.currencyTotals.length ? s.currencyTotals[0].currency : '';
+    const primaryAccounts = accounts.filter((a) => a.currency === primaryCurrency);
+    const total = primaryAccounts.reduce((n, a) => n + a.booked, 0);
+    const win = this.windowTxs();
+    const primaryWin = win.filter((t) => t.currency === primaryCurrency);
+    const inflow = primaryWin.filter((t) => t.isIn).reduce((n, t) => n + t.amount, 0);
+    const outflow = primaryWin.filter((t) => !t.isIn).reduce((n, t) => n + t.amount, 0);
+    const periodLabel = s.period + ' days';
+    const allTx = accounts.flatMap((a) => a.txs.map((t) => ({ ...t, account: a.product })));
+
+    const row = (t) => ({
+      id: t.id, dateStr: DAY.format(parse(t.date)), desc: t.text, account: t.account,
+      status: t.status === 'BOOK' ? 'Booked' : t.status,
+      amountStr: signed(t.signed) + ' ' + t.currency, isIn: t.isIn, isOut: !t.isIn,
+    });
+
+    // counterparties
+    const agg = {};
+    primaryWin.filter((t) => !t.isIn).forEach((t) => {
+      const k = counterpartyOf(t.text);
+      agg[k] = agg[k] || { name: k, sum: 0, n: 0 };
+      agg[k].sum += t.amount; agg[k].n += 1;
+    });
+    const top = Object.values(agg).sort((a, b) => b.sum - a.sum).slice(0, 6);
+    const peak = top.length ? top[0].sum : 1;
+    const counterparties = top.map((c) => ({
+      name: c.name, amountStr: NUM0.format(Math.round(c.sum)) + ' ' + primaryCurrency,
+      pct: Math.round((c.sum / peak) * 100), countLabel: c.n + (c.n === 1 ? ' txn' : ' txns'),
+    }));
+
+    // transactions screen
+    const q = s.query.trim().toLowerCase();
+    const filtered = win.filter((t) =>
+      (s.dir === 'all' || (s.dir === 'in') === t.isIn) && (!q || String(t.text).toLowerCase().includes(q))
+    );
+    const groupMap = [];
+    filtered.forEach((t) => {
+      let g = groupMap[groupMap.length - 1];
+      if (!g || g.date !== t.date || g.currency !== t.currency) { g = { date: t.date, currency: t.currency, items: [], net: 0 }; groupMap.push(g); }
+      g.items.push(row(t)); g.net += t.signed;
+    });
+    const txGroups = groupMap.map((g) => ({
+      date: g.date, dateStr: LONGDAY.format(parse(g.date)), netStr: signed(g.net) + ' ' + g.currency, items: g.items,
+    }));
+
+    const sel = accounts.find((a) => a.uid === s.selected) || accounts[0] || null;
+    const chartTx = allTx.filter((t) => t.currency === primaryCurrency);
+    const chartSeries = primaryAccounts.length ? seriesFor(chartTx, total, s.period) : [{ date: iso(new Date()), balance: 0 }];
+    const acctSeries = sel ? seriesFor(sel.txs, sel.booked, s.period) : chartSeries;
+
+    const on = 'var(--color-accent)', onFg = 'var(--color-bg)', off = 'transparent', offFg = 'var(--color-text)';
+    const err = s.error || {};
+    const callbackNotices = {
+      success: 'Bank connected. Initial sync has started.',
+      denied: 'Bank connection was cancelled.',
+      invalid_state: 'The connection link expired or was already used. Please try again.',
+      malformed: 'The bank returned an incomplete response. Please try again.',
+      provider_error: 'The bank provider could not complete the connection. Please try again.',
+      database_error: 'The connection could not be saved. Please try again.',
+    };
+
+    return {
+      isAuthed: ['dashboard', 'transactions', 'account', 'settings'].includes(screen),
+      isLogin: screen === 'login', isConnect: screen === 'connect', isConnecting: screen === 'connecting',
+      isSyncing: screen === 'syncing', isDashboard: screen === 'dashboard',
+      isTransactions: screen === 'transactions', isAccount: screen === 'account',
+      isSettings: screen === 'settings', isError: screen === 'error',
+      navOverview: screen === 'dashboard' || screen === 'account',
+      navTx: screen === 'transactions', navSettings: screen === 'settings',
+      busy: s.busy,
+      modeLabel: 'live',
+      userEmail: s.user && s.user.email ? s.user.email : '',
+      bankName: s.connection ? s.connection.bank_name : 'Bank',
+      bankCountry: s.connection ? s.connection.bank_country : '',
+      connectionStatus: s.connection ? s.connection.status.toUpperCase() : 'DISCONNECTED',
+      loginHref: this.api.loginUrl,
+
+      login: this.onLogin, startConnect: this.onStartConnect, disconnect: this.onDisconnect,
+      logout: this.onLogout, requestSync: this.onRequestSync,
+      retryLoad: () => { this.setState({ screen: 'syncing' }); this.startSyncTicker(); this.load('dashboard'); },
+      goOverview: () => this.setState({ screen: 'dashboard' }),
+      goTx: () => this.setState({ screen: 'transactions' }),
+      goSettings: () => this.setState({ screen: 'settings' }),
+      setP30: () => { this.setState({ period: 30 }); setTimeout(() => this.load(screen), 0); },
+      setP90: () => { this.setState({ period: 90 }); setTimeout(() => this.load(screen), 0); },
+      setQuery: (e) => this.setState({ query: e.target.value }),
+      setDirAll: () => this.setState({ dir: 'all' }),
+      setDirIn: () => this.setState({ dir: 'in' }),
+      setDirOut: () => this.setState({ dir: 'out' }),
+      query: s.query,
+
+      p30bg: s.period === 30 ? on : off, p30fg: s.period === 30 ? onFg : offFg,
+      p90bg: s.period === 90 ? on : off, p90fg: s.period === 90 ? onFg : offFg,
+      dAllBg: s.dir === 'all' ? on : off, dAllFg: s.dir === 'all' ? onFg : offFg,
+      dInBg: s.dir === 'in' ? on : off, dInFg: s.dir === 'in' ? onFg : offFg,
+      dOutBg: s.dir === 'out' ? on : off, dOutFg: s.dir === 'out' ? onFg : offFg,
+
+      totalStr: NUM2.format(total), accountCount: accounts.length,
+      asOf: LONGDAY.format(new Date()), periodLabel,
+      inStr: NUM0.format(Math.round(inflow)), outStr: NUM0.format(Math.round(outflow)),
+      netStr: signed(Math.round(inflow - outflow)),
+      txCount: allTx.length, filteredCount: filtered.length,
+      noResults: filtered.length === 0,
+      currencyCards: s.currencyTotals.map((c) => ({
+        currency: c.currency, balance: NUM2.format(Number(c.balance)),
+        inflow: NUM2.format(Number(c.inflow)), outflow: NUM2.format(Number(c.outflow)),
+        net: signed(Number(c.net)),
+      })),
+      hasPartialFailures: s.partialFailures.length > 0,
+      partialFailureText: s.partialFailures.length + ' account sync' + (s.partialFailures.length === 1 ? '' : 's') + ' failed; successful accounts remain available.',
+      hasCallbackNotice: Boolean(s.callbackResult),
+      callbackNotice: callbackNotices[s.callbackResult] || '',
+
+      accountRows: accounts.map((a, i) => ({
+        uid: a.uid, product: a.product, notFirst: i > 0,
+        typeLabel: a.type === 'SVGS' ? 'Savings' : 'Current',
+        balanceStr: NUM0.format(a.booked) + ' ' + a.currency,
+        iban: a.iban,
+        freshness: a.freshness ? 'Updated ' + new Date(a.freshness).toLocaleString('nb-NO') : a.syncStatus,
+        share: (() => { const ct = s.currencyTotals.find((c) => c.currency === a.currency); return ct && Number(ct.balance) ? Math.round((a.booked / Number(ct.balance)) * 100) : 0; })(),
+        open: () => this.setState({ screen: 'account', selected: a.uid }),
+      })),
+
+      chart: buildChart(chartSeries, 250, 14, 34),
+      acctChart: buildChart(acctSeries, 200, 10, 20),
+      counterparties,
+      recent: win.slice(0, 8).map(row),
+      txGroups,
+      acctTx: sel ? sel.txs.filter((t) => t.date >= chartSeries[0].date).slice(0, 24).map((t) => row({ ...t, account: sel.product })) : [],
+      acct: sel ? {
+        product: sel.product, iban: sel.iban, bic: sel.bic || '',
+        typeLabel: sel.type === 'SVGS' ? 'Savings account' : 'Current account',
+        bookedStr: NUM2.format(sel.booked) + ' ' + sel.currency, availableStr: NUM2.format(sel.available) + ' ' + sel.currency,
+      } : { product: '', iban: '', bic: '', typeLabel: '', bookedStr: '', availableStr: '' },
+
+      syncSteps: [
+        { num: '01', label: 'Reading connection session', status: s.syncStep > 0 ? 'Done' : 'Working' },
+        { num: '02', label: 'Listing accounts and balances', status: s.syncStep > 1 ? 'Done' : s.syncStep === 1 ? 'Working' : 'Queued' },
+        { num: '03', label: 'Syncing transactions to Postgres', status: s.syncStep > 2 ? 'Done' : s.syncStep === 2 ? 'Working' : 'Queued' },
+      ],
+      syncPct: Math.round((s.syncStep / 3) * 100),
+
+      errorKicker: err.kind === 'consent' ? 'Consent expired' : 'Connection error',
+      errorTitle: err.kind === 'consent' ? 'Your bank needs approval again.' : 'We could not load your cached data.',
+      errorBody: err.kind === 'consent'
+        ? 'This consent has expired. Reconnecting keeps the history already stored here.'
+        : 'The request failed safely. Try again; cached account successes remain available.',
+      errorDetail: String(err.detail || ''),
+      lastSync: accounts.reduce((latest, a) => !a.freshness ? latest : (!latest || a.freshness > latest ? a.freshness : latest), ''),
+      connectedOn: s.connection ? new Date(s.connection.created_at).toLocaleDateString('nb-NO') : '',
+      validUntil: s.connection && s.connection.valid_until ? new Date(s.connection.valid_until).toLocaleString('nb-NO') : 'not supplied',
+      authUrl: s.authUrl,
+    };
+  }
+}
+</script>
+</body>
+</html>
