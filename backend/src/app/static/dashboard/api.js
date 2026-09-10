@@ -44,8 +44,23 @@
     getAccount: (id) => req('/accounts/' + encodeURIComponent(id)),
     getBalances: (id) => req('/accounts/' + encodeURIComponent(id) + '/balances'),
     getTransactions: (id) => req('/accounts/' + encodeURIComponent(id) + '/transactions'),
-    startConnection: () => req('/connections/start', { method: 'POST' }),
-    revokeConnection: () => req('/connections/revoke', { method: 'DELETE' }),
+    renameAccount: (id, displayName) => req('/accounts/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display_name: displayName }),
+    }),
+    reorderAccounts: (accountIds) => req('/accounts/order', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ account_ids: accountIds }),
+    }),
+    listBanks: () => req('/connections/banks'),
+    startConnection: (bank) => req('/connections/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: bank ? JSON.stringify({ bank_name: bank.name, bank_country: bank.country }) : undefined,
+    }),
+    revokeConnection: (connectionId) => req('/connections/' + encodeURIComponent(connectionId), { method: 'DELETE' }),
   };
 
   window.BankApi = {

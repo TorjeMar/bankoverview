@@ -183,8 +183,9 @@
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:0 -24px">
         <sc-for list="{{ accountRows }}" as="a" hint-placeholder-count="3">
-          <button onClick="{{ a.open }}" style="position:relative;text-align:left;font:inherit;color:inherit;background:none;border:0;padding:22px 24px;cursor:pointer;display:block;width:100%" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
+          <div onClick="{{ a.open }}" draggable="true" onDragStart="{{ a.dragStart }}" onDragOver="{{ a.dragOver }}" onDrop="{{ a.drop }}" style="position:relative;text-align:left;font:inherit;color:inherit;background:none;border:0;padding:22px 24px;cursor:grab;display:block;width:100%;opacity:{{ a.opacity }}" style-hover="background:color-mix(in srgb, var(--color-text) 4%, transparent)">
             <sc-if value="{{ a.notFirst }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--color-divider)"></span></sc-if>
+            <div style="position:absolute;right:14px;top:14px;font-size:14px;color:var(--color-neutral-500)">⠿</div>
             <div style="display:flex;align-items:center;gap:8px">
               <span style="font-family:var(--font-heading);font-weight:800;font-size:16px">{{ a.product }}</span>
               <span class="tag tag-neutral" style="font-size:10px;letter-spacing:0.06em">{{ a.typeLabel }}</span>
@@ -195,7 +196,7 @@
             <div style="margin-top:12px;height:2px;background:var(--color-neutral-300)">
               <div style="height:2px;background:var(--color-accent);width:{{ a.share }}%"></div>
             </div>
-          </button>
+          </div>
         </sc-for>
       </div>
 
@@ -336,7 +337,13 @@
       <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:32px;flex-wrap:wrap;margin-top:16px">
         <div>
           <div style="font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent)">{{ acct.typeLabel }} · {{ bankName }}</div>
-          <h1 style="margin:12px 0 0;font-size:40px;letter-spacing:-0.025em">{{ acct.product }}</h1>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+            <input class="input" value="{{ renameDraft }}" onInput="{{ setRenameDraft }}" style="font-family:var(--font-heading);font-weight:800;font-size:28px;padding:4px 8px;max-width:420px">
+            <button onClick="{{ renameAccount }}" class="btn btn-secondary" style="padding:6px 14px">Save</button>
+            <sc-if value="{{ renameSaved }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:13px;color:#0a8f52">Saved</span>
+            </sc-if>
+          </div>
           <div style="margin-top:8px;font-size:13px;color:var(--color-neutral-700);font-variant-numeric:tabular-nums">{{ acct.iban }} · {{ acct.bic }}</div>
         </div>
         <div style="display:flex">
@@ -405,6 +412,9 @@
             <button onClick="{{ disconnect }}" class="btn btn-primary" style="justify-content:flex-start">Disconnect bank</button>
             <button onClick="{{ requestSync }}" class="btn btn-secondary">Refresh cached data</button>
           </div>
+          <sc-if value="{{ hasSyncMessage }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:12px;color:var(--color-neutral-800);font-size:13px">{{ syncMessage }}</div>
+          </sc-if>
         </div>
       </div>
     </section>
@@ -494,8 +504,8 @@ class Component extends DCLogic {
   state = {
     screen: 'login', busy: false, accounts: [], selected: null,
     query: '', dir: 'all', period: 30, authUrl: '', syncStep: 0,
-    error: null, connection: null, user: null, currencyTotals: [], partialFailures: [],
-    callbackResult: null,
+    error: null, connection: null, connections: [], user: null, currencyTotals: [], partialFailures: [],
+    callbackResult: null, syncMessage: null, renameDraft: '', renameSaved: false, draggingUid: null,
   };
 
   componentDidMount() {
@@ -511,7 +521,7 @@ class Component extends DCLogic {
     this.load('dashboard');
   }
 
-  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.pollTimer); }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.pollTimer); clearTimeout(this.syncMessageTimer); clearTimeout(this.renameSavedTimer); }
 
   /* ── data ─────────────────────────────────────────────── */
 
@@ -538,6 +548,8 @@ class Component extends DCLogic {
             available: byType.ITAV != null ? byType.ITAV : booked,
             freshness: details.last_synced_at,
             syncStatus: details.sync_status,
+            connectionId: details.connection_id,
+            bankName: details.bank_name,
             txs: (overview.transactions || []).filter((t) => t.account_id === uid).map((t) => {
               const amt = Number(t.amount);
               const isIn = t.credit_debit_indicator === 'CRDT';
@@ -549,16 +561,18 @@ class Component extends DCLogic {
             }),
           };
         });
-      const connection = overview.connection;
+      const connections = overview.connections || [];
+      const live = connections.filter((c) => !['revoked', 'revocation_pending', 'superseded'].includes(c.status));
+      const connection = live[0] || connections[0] || null;
       let screen = target || 'dashboard';
       let error = null;
-      if (!connection || ['revoked', 'revocation_pending', 'superseded'].includes(connection.status)) screen = 'connect';
+      if (!live.length) screen = 'connect';
       else if (connection.status === 'initializing') screen = 'syncing';
       else if (connection.status === 'expired') { screen = 'error'; error = { kind: 'consent' }; }
       const initializing = connection && connection.status === 'initializing';
       if (!initializing) clearInterval(this.timer);
       this.setState({
-        user, connection, accounts, error, busy: false, screen,
+        user, connection, connections, accounts, error, busy: false, screen,
         syncStep: initializing ? this.state.syncStep : 3,
         currencyTotals: overview.currency_totals || [],
         partialFailures: overview.partial_failures || [],
@@ -596,10 +610,11 @@ class Component extends DCLogic {
   };
 
   onDisconnect = async () => {
+    if (!this.state.connection) return;
     this.setState({ busy: true });
     try {
-      const res = await this.api.revokeConnection();
-      this.setState({ busy: false, screen: 'connect', accounts: [], connection: res.connection });
+      await this.api.revokeConnection(this.state.connection.connection_id);
+      await this.load('connect');
     } catch (e) {
       this.setState({ busy: false, screen: 'error', error: { kind: 'fetch', detail: e.detail || e.message } });
     }
@@ -612,10 +627,60 @@ class Component extends DCLogic {
     }
   };
 
+  onRenameAccount = async () => {
+    if (!this.state.selected) return;
+    this.setState({ busy: true, renameSaved: false });
+    try {
+      await this.api.renameAccount(this.state.selected, this.state.renameDraft.trim());
+      await this.load('account');
+      this.setState({ renameSaved: true });
+      clearTimeout(this.renameSavedTimer);
+      this.renameSavedTimer = setTimeout(() => this.setState({ renameSaved: false }), 3000);
+    } catch (e) {
+      this.setState({ busy: false, error: { kind: 'fetch', detail: e.detail || e.message } });
+    }
+  };
+
+  onDragStart = (e, index) => {
+    this.dragIndex = index;
+    e.dataTransfer.effectAllowed = 'move';
+    this.setState({ draggingUid: this.state.accounts[index].uid });
+  };
+
+  onDragOver = (e) => { e.preventDefault(); };
+
+  onDrop = async (e, index) => {
+    e.preventDefault();
+    const from = this.dragIndex;
+    this.dragIndex = null;
+    this.setState({ draggingUid: null });
+    if (from == null || from === index) return;
+    const accounts = this.state.accounts.slice();
+    const [moved] = accounts.splice(from, 1);
+    accounts.splice(index, 0, moved);
+    this.setState({ accounts });
+    try {
+      await this.api.reorderAccounts(accounts.map((a) => a.uid));
+    } catch (e2) {
+      await this.load('dashboard');
+    }
+  };
+
   onRequestSync = async () => {
-    this.setState({ busy: true });
-    try { await this.api.sync(); await this.load('dashboard'); }
-    catch (e) { this.setState({ busy: false, error: { kind: 'fetch', detail: e.detail || e.message } }); }
+    this.setState({ busy: true, syncMessage: null });
+    try {
+      const result = await this.api.sync();
+      await this.load('dashboard');
+      const msg = result
+        ? `Synced ${result.transactions_synced} transaction${result.transactions_synced === 1 ? '' : 's'} across ${result.accounts_synced} account${result.accounts_synced === 1 ? '' : 's'}`
+          + (result.failed.length ? `, ${result.failed.length} failed` : '')
+        : null;
+      this.setState({ syncMessage: msg });
+      clearTimeout(this.syncMessageTimer);
+      this.syncMessageTimer = setTimeout(() => this.setState({ syncMessage: null }), 6000);
+    } catch (e) {
+      this.setState({ busy: false, error: { kind: 'fetch', detail: e.detail || e.message } });
+    }
   };
 
   /* ── derived ──────────────────────────────────────────── */
@@ -714,6 +779,10 @@ class Component extends DCLogic {
 
       login: this.onLogin, startConnect: this.onStartConnect, disconnect: this.onDisconnect,
       logout: this.onLogout, requestSync: this.onRequestSync,
+      renameAccount: this.onRenameAccount,
+      setRenameDraft: (e) => this.setState({ renameDraft: e.target.value }),
+      renameDraft: s.renameDraft,
+      renameSaved: s.renameSaved,
       retryLoad: () => { this.setState({ screen: 'syncing' }); this.startSyncTicker(); this.load('dashboard'); },
       goOverview: () => this.setState({ screen: 'dashboard' }),
       goTx: () => this.setState({ screen: 'transactions' }),
@@ -744,6 +813,7 @@ class Component extends DCLogic {
         net: signed(Number(c.net)),
       })),
       hasPartialFailures: s.partialFailures.length > 0,
+      hasSyncMessage: !!s.syncMessage, syncMessage: s.syncMessage || '',
       partialFailureText: s.partialFailures.length + ' account sync' + (s.partialFailures.length === 1 ? '' : 's') + ' failed; successful accounts remain available.',
       hasCallbackNotice: Boolean(s.callbackResult),
       callbackNotice: callbackNotices[s.callbackResult] || '',
@@ -755,7 +825,11 @@ class Component extends DCLogic {
         iban: a.iban,
         freshness: a.freshness ? 'Updated ' + new Date(a.freshness).toLocaleString('nb-NO') : a.syncStatus,
         share: (() => { const ct = s.currencyTotals.find((c) => c.currency === a.currency); return ct && Number(ct.balance) ? Math.round((a.booked / Number(ct.balance)) * 100) : 0; })(),
-        open: () => this.setState({ screen: 'account', selected: a.uid }),
+        open: () => this.setState({ screen: 'account', selected: a.uid, renameDraft: a.product }),
+        opacity: s.draggingUid === a.uid ? 0.4 : 1,
+        dragStart: (e) => this.onDragStart(e, i),
+        dragOver: this.onDragOver,
+        drop: (e) => this.onDrop(e, i),
       })),
 
       chart: buildChart(chartSeries, 250, 14, 34),

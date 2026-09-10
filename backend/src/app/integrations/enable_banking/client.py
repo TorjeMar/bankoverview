@@ -51,9 +51,25 @@ def create_enable_banking_headers(
     }
 
 
+def list_aspsps(settings: Settings, country: str) -> list[dict]:
+    headers = create_enable_banking_headers(settings)
+    base_url = get_api_base_url(settings)
+
+    response = requests.get(
+        f"{base_url}/aspsps",
+        params={"country": country},
+        headers=headers,
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json().get("aspsps", [])
+
+
 def create_bank_authorization(
     settings: Settings,
     state: str,
+    aspsp_name: str,
+    aspsp_country: str,
 ) -> str:
     headers = create_enable_banking_headers(settings)
     base_url = get_api_base_url(settings)
@@ -65,8 +81,8 @@ def create_bank_authorization(
             ).isoformat()
         },
         "aspsp": {
-            "name": settings.aspsp_name,
-            "country": settings.aspsp_country,
+            "name": aspsp_name,
+            "country": aspsp_country,
         },
         "state": state,
         "redirect_url": str(settings.callback_url),

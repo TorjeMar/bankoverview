@@ -7,6 +7,19 @@ from pydantic import BaseModel, Field
 class AccountsResponse(BaseModel):
     accounts: list[str] = Field(default_factory=list)
 
+
+class RenameAccountRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=200)
+
+
+class RenameAccountResponse(BaseModel):
+    account_id: str
+    display_name: str | None = None
+
+
+class ReorderAccountsRequest(BaseModel):
+    account_ids: list[str]
+
 class AccountDetailsResponse(BaseModel):
     account_id: dict[str, Any] = Field(default_factory=dict)
     all_account_ids: list[dict[str, Any]] = Field(default_factory=list)

@@ -14,6 +14,9 @@ from app.features.accounts.schemas import (
     AccountDetailsResponse,
     AccountsResponse,
     AccountTransactionsResponse,
+    RenameAccountRequest,
+    RenameAccountResponse,
+    ReorderAccountsRequest,
 )
 from app.features.accounts.service import (
     sync_transactions_for_account,
@@ -22,6 +25,8 @@ from app.features.accounts.service import (
     to_account_transactions_response,
     to_get_accounts_response,
 )
+from app.features.auth.router import get_current_user, verify_csrf
+from app.features.auth.schemas import UserSession
 from app.features.connections.models import BankConnectionModel
 from app.features.connections.router import get_bank_connection
 from app.integrations.enable_banking.client import (
@@ -62,14 +67,11 @@ def get_accounts(
 )
 async def get_account_details(
     account_id: str,
-    connection: Annotated[
-        BankConnectionModel,
-        Depends(get_bank_connection),
-    ],
+    current_user: Annotated[UserSession, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountDetailsResponse:
-    account_link = await repository.get_account_for_connection(
-        db, connection.connection_id, account_id
+    account_link = await repository.get_account_owned_by_user(
+        db, current_user.user_id, account_id
     )
     if account_link is None:
         raise HTTPException(
@@ -95,14 +97,11 @@ async def get_account_details(
 )
 async def get_account_balance(
     account_id: str,
-    connection: Annotated[
-        BankConnectionModel,
-        Depends(get_bank_connection),
-    ],
+    current_user: Annotated[UserSession, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountBalanceResponse:
-    account_link = await repository.get_account_for_connection(
-        db, connection.connection_id, account_id
+    account_link = await repository.get_account_owned_by_user(
+        db, current_user.user_id, account_id
     )
     if account_link is None:
         raise HTTPException(
@@ -128,14 +127,11 @@ async def get_account_balance(
 )
 async def get_account_transactions(
     account_id: str,
-    connection: Annotated[
-        BankConnectionModel,
-        Depends(get_bank_connection),
-    ],
+    current_user: Annotated[UserSession, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AccountTransactionsResponse:
-    account_link = await repository.get_account_for_connection(
-        db, connection.connection_id, account_id
+    account_link = await repository.get_account_owned_by_user(
+        db, current_user.user_id, account_id
     )
     if account_link is None:
         raise HTTPException(
@@ -147,3 +143,45 @@ async def get_account_transactions(
 
     transactions = await repository.get_transactions_for_account(db, account_id)
     return to_account_transactions_response(account_id, transactions)
+
+
+@router.put(
+    "/order",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Reorder accounts",
+    dependencies=[Depends(verify_csrf)],
+)
+async def reorder_accounts(
+    body: ReorderAccountsRequest,
+    current_user: Annotated[UserSession, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    owned = await repository.get_all_owned_by_user(db, current_user.user_id)
+    owned_ids = {account.account_id for account in owned}
+    ordered = [account_id for account_id in body.account_ids if account_id in owned_ids]
+    await repository.set_sort_orders(db, ordered)
+
+
+@router.patch(
+    "/{account_id}",
+    response_model=RenameAccountResponse,
+    summary="Rename account",
+    dependencies=[Depends(verify_csrf)],
+)
+async def rename_account(
+    account_id: str,
+    body: RenameAccountRequest,
+    current_user: Annotated[UserSession, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> RenameAccountResponse:
+    account = await repository.get_account_owned_by_user(db, current_user.user_id, account_id)
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found",
+        )
+
+    display_name = (body.display_name or "").strip() or None
+    await repository.set_display_name(db, account_id, display_name)
+
+    return RenameAccountResponse(account_id=account_id, display_name=display_name)
