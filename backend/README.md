@@ -20,7 +20,7 @@ FastAPI backend for a personal finance dashboard using Open Banking (via
 - In-memory storage only for short-lived state (pending bank authorizations
   mid-handshake)
 - Environment-based configuration using Pydantic Settings
-- Auto-generated dev dashboard at `/dev` for exercising every endpoint
+- End-user dashboard served at `/app`
 
 ---
 
@@ -137,7 +137,7 @@ uv run uvicorn app.main:app --reload
 The API is available at `http://localhost:8000`, mounted under `/api/v1`.
 
 - Interactive docs: `http://localhost:8000/docs`
-- Dev dashboard (click-through explorer built from `/openapi.json`): `http://localhost:8000/dev`
+- Dashboard: `http://localhost:8000/app`
 
 ---
 
@@ -150,12 +150,12 @@ GET /api/v1/login
 ```
 
 Full-page redirect into Google's OAuth consent screen (not a plain API call —
-open it in a browser, or use the dev dashboard's dedicated login button).
+open it in a browser, or use the dashboard's login button).
 `GET /api/v1/login/callback` handles Google's redirect back: it looks up or
-creates a `User` by Google's `sub` claim, mints a JWT (`user_id` + 7-day
-`exp`, HS256, signed with `SESSION_SECRET`), sets it as an HTTP-only
-`session_token` cookie, and redirects to `/dev/`. The JWT is self-contained,
-so a session survives a backend restart — nothing server-side backs it.
+creates a `User` by Google's `sub` claim, mints a JWT (`user_id` + `sid` +
+7-day `exp`, HS256, signed with `SESSION_SECRET`) backed by a `sessions` row
+so it can be revoked on logout, sets it as an HTTP-only `session_token`
+cookie plus a readable `csrf_token` cookie, and redirects to `/app/`.
 
 ---
 

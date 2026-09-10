@@ -22,7 +22,11 @@ def create_app() -> FastAPI:
     application.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
 
     application.include_router(api_router)
-    application.mount("/dev", StaticFiles(directory=STATIC_DIR, html=True), name="dev-ui")
+    application.mount(
+        "/app",
+        StaticFiles(directory=STATIC_DIR / "dashboard", html=True),
+        name="dashboard-ui",
+    )
 
     return application
 
