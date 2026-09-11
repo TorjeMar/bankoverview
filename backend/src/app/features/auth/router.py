@@ -62,7 +62,7 @@ async def get_current_user(
         )
 
     try:
-        payload = jwt.decode(session_token, settings.session_secret, algorithms=["HS256"])
+        payload = jwt.decode(session_token, settings.jwt_secret, algorithms=["HS256"])
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -150,7 +150,7 @@ async def auth_callback(
             "sid": sid,
             "exp": now + SESSION_MAX_AGE,
         },
-        settings.session_secret,
+        settings.jwt_secret,
         algorithm="HS256",
     )
 

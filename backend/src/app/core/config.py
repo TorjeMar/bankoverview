@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import AnyHttpUrl, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
@@ -25,7 +25,13 @@ class Settings(BaseSettings):
     database_url: str
     google_client_id: str
     google_client_secret: str
-    session_secret: str
+    # Three distinct secrets rather than one reused for everything — each
+    # backs a different security mechanism (Starlette's OAuth state/nonce
+    # cookie, JWT session-token signing, CSRF HMAC), so compromising one
+    # doesn't compromise the others.
+    oauth_session_secret: str
+    jwt_secret: str
+    csrf_secret: str
 
     @field_validator("key_path")
     @classmethod
@@ -61,12 +67,12 @@ class Settings(BaseSettings):
 
         return value
 
-    @field_validator("session_secret")
+    @field_validator("oauth_session_secret", "jwt_secret", "csrf_secret")
     @classmethod
-    def validate_session_secret(cls, value: str) -> str:
+    def validate_secret_length(cls, value: str, info: ValidationInfo) -> str:
         if len(value) < 32:
             raise ValueError(
-                "session_secret must be at least 32 characters — "
+                f"{info.field_name} must be at least 32 characters — "
                 "generate one with `openssl rand -hex 32`"
             )
         return value

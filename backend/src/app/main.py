@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -6,6 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.database import engine
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -20,16 +23,23 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
+@asynccontextmanager
+async def lifespan(_application: FastAPI) -> AsyncIterator[None]:
+    yield
+    await engine.dispose()
+
+
 def create_app() -> FastAPI:
     application = FastAPI(
         title="Personal Finance Dashboard API",
         version="0.1.0",
+        lifespan=lifespan,
     )
 
     # Needed by Authlib's OAuth client to hold short-lived state/nonce
     # values during the Google login redirect handshake — unrelated to
     # this app's own JWT session, which is stateless.
-    application.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+    application.add_middleware(SessionMiddleware, secret_key=settings.oauth_session_secret)
 
     application.include_router(api_router)
     application.mount(

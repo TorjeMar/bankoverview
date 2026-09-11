@@ -119,8 +119,15 @@ DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/openbanking
 GOOGLE_CLIENT_ID=<google-oauth-client-id>
 GOOGLE_CLIENT_SECRET=<google-oauth-client-secret>
 
-SESSION_SECRET=<random 32+ char secret, e.g. `openssl rand -hex 32`>
+OAUTH_SESSION_SECRET=<random 32+ char secret, e.g. `openssl rand -hex 32`>
+JWT_SECRET=<random 32+ char secret, e.g. `openssl rand -hex 32`>
+CSRF_SECRET=<random 32+ char secret, e.g. `openssl rand -hex 32`>
 ```
+
+Three distinct secrets, not one reused: `OAUTH_SESSION_SECRET` signs
+Starlette's short-lived OAuth state/nonce cookie, `JWT_SECRET` signs session
+JWTs, `CSRF_SECRET` HMACs the double-submit CSRF token. Generate three
+different values — compromising one shouldn't compromise the others.
 
 Place your private key at the path referenced by `KEY_PATH`, e.g.
 
@@ -179,7 +186,7 @@ Full-page redirect into Google's OAuth consent screen (not a plain API call —
 open it in a browser, or use the dashboard's login button).
 `GET /api/v1/login/callback` handles Google's redirect back: it looks up or
 creates a `User` by Google's `sub` claim, mints a JWT (`user_id` + `sid` +
-7-day `exp`, HS256, signed with `SESSION_SECRET`) backed by a `sessions` row
+7-day `exp`, HS256, signed with `JWT_SECRET`) backed by a `sessions` row
 so it can be revoked on logout, sets it as an HTTP-only `session_token`
 cookie plus a readable `csrf_token` cookie, and redirects to `/app/`.
 
@@ -187,7 +194,7 @@ cookie plus a readable `csrf_token` cookie, and redirects to `/app/`.
 
 All state-changing requests (`POST`/`PUT`/`PATCH`/`DELETE`) also require an
 `X-CSRF-Token` header matching the readable `csrf_token` cookie — a
-double-submit check (`HMAC-SHA256(SESSION_SECRET, session_id)`), verified
+double-submit check (`HMAC-SHA256(CSRF_SECRET, session_id)`), verified
 with a constant-time comparison.
 
 ---
