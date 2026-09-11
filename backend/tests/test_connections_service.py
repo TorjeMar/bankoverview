@@ -64,40 +64,51 @@ def _fake_session(uid: str, iban: str = "NO1234567890123") -> CreatedEnableBanki
 async def test_create_bank_connection_persists_connection_and_accounts(
     db: AsyncSession, test_user: UserModel
 ) -> None:
-    # create_bank_connection is the fast, DB-only path — no Enable Banking
-    # calls, so unlike backfill_bank_connection this needs no network stubs.
-    connection = await create_bank_connection(
-        db, user_id=str(test_user.user_id), session=_fake_session("fake-account-uid")
-    )
-
-    # re-fetch to prove it's actually in the database, not just the object
-    # we already have in memory
-    stored_connection = await db.get(BankConnectionModel, connection.connection_id)
-    assert stored_connection is not None
-    assert stored_connection.status == "active"
-    assert stored_connection.user_id == test_user.user_id
-    assert stored_connection.enable_banking_session_id == "fake-session-fake-account-uid"
-
-    result = await db.execute(
-        select(BankAccountModel).where(
-            BankAccountModel.connection_id == connection.connection_id
+    account_id = "fake-account-uid"
+    connection_id = None
+    try:
+        # create_bank_connection is the fast, DB-only path — no Enable
+        # Banking calls, so unlike backfill_bank_connection this needs no
+        # network stubs.
+        connection = await create_bank_connection(
+            db, user_id=str(test_user.user_id), session=_fake_session(account_id)
         )
-    )
-    accounts = result.scalars().all()
+        connection_id = connection.connection_id
 
-    assert len(accounts) == 1
-    assert accounts[0].account_id == "fake-account-uid"
-    assert accounts[0].iban == "NO1234567890123"
-    assert accounts[0].currency == "NOK"
-    assert accounts[0].bic == "TESTNOKK"
+        # re-fetch to prove it's actually in the database, not just the
+        # object we already have in memory
+        stored_connection = await db.get(BankConnectionModel, connection.connection_id)
+        assert stored_connection is not None
+        assert stored_connection.status == "active"
+        assert stored_connection.user_id == test_user.user_id
+        assert stored_connection.enable_banking_session_id == "fake-session-fake-account-uid"
 
-    # cleanup: delete what this test created so it can be re-run cleanly.
-    # The Bank row (DNB/NO) is deliberately left alone — it's shared
-    # reference data, not something this test owns.
-    for account in accounts:
-        await db.delete(account)
-    await db.delete(stored_connection)
-    await db.commit()
+        result = await db.execute(
+            select(BankAccountModel).where(
+                BankAccountModel.connection_id == connection.connection_id
+            )
+        )
+        accounts = result.scalars().all()
+
+        assert len(accounts) == 1
+        assert accounts[0].account_id == account_id
+        assert accounts[0].iban == "NO1234567890123"
+        assert accounts[0].currency == "NOK"
+        assert accounts[0].bic == "TESTNOKK"
+    finally:
+        # Cleanup runs even if an assertion above failed, so a broken test
+        # can't leak rows across reruns. Re-fetched fresh by known id rather
+        # than trusting variables an early failure may have skipped. The
+        # Bank row (DNB/NO) is deliberately left alone — it's shared
+        # reference data, not something this test owns.
+        account = await db.get(BankAccountModel, account_id)
+        if account is not None:
+            await db.delete(account)
+        if connection_id is not None:
+            connection_row = await db.get(BankConnectionModel, connection_id)
+            if connection_row is not None:
+                await db.delete(connection_row)
+        await db.commit()
 
 
 @pytest.mark.asyncio
@@ -132,42 +143,54 @@ async def test_backfill_bank_connection_syncs_accounts_individually(
         lambda **kwargs: EnableBankingBalance(balances=[]),
     )
 
-    connection = await create_bank_connection(
-        db, user_id=str(test_user.user_id), session=_fake_session("backfill-uid")
-    )
-    assert connection.status == "active"
-    connection_id = connection.connection_id  # read before expiring below
-    account_before = await db.get(BankAccountModel, "backfill-uid")
-    assert account_before is not None
-    assert account_before.sync_status is None  # not yet synced
+    account_id = "backfill-uid"
+    connection_id = None
+    try:
+        connection = await create_bank_connection(
+            db, user_id=str(test_user.user_id), session=_fake_session(account_id)
+        )
+        assert connection.status == "active"
+        connection_id = connection.connection_id  # read before expiring below
+        account_before = await db.get(BankAccountModel, account_id)
+        assert account_before is not None
+        assert account_before.sync_status is None  # not yet synced
 
-    await backfill_bank_connection(["backfill-uid"])
+        await backfill_bank_connection([account_id])
 
-    # backfill_bank_connection commits through its own sessions — refresh
-    # this test's session's view rather than trusting stale cached state.
-    db.expire_all()
-    account_after = await db.get(BankAccountModel, "backfill-uid")
-    assert account_after is not None
-    assert account_after.sync_status == "ok"
-    assert account_after.last_synced_at is not None
+        # backfill_bank_connection commits through its own sessions — refresh
+        # this test's session's view rather than trusting stale cached state.
+        db.expire_all()
+        account_after = await db.get(BankAccountModel, account_id)
+        assert account_after is not None
+        assert account_after.sync_status == "ok"
+        assert account_after.last_synced_at is not None
 
-    result = await db.execute(
-        select(TransactionModel).where(TransactionModel.account_id == "backfill-uid")
-    )
-    transactions = result.scalars().all()
-    assert len(transactions) == 1
-    assert transactions[0].transaction_id == "fake-tx-1"
-
-    # cleanup — transactions first and committed separately: no ORM
-    # relationship is mapped between TransactionModel/BankAccountModel, so a
-    # single flush mixing both deletes has no dependency info to order them
-    # correctly and can try to delete the account first.
-    for transaction in transactions:
-        await db.delete(transaction)
-    await db.commit()
-    await db.delete(account_after)
-    await db.delete(await db.get(BankConnectionModel, connection_id))
-    await db.commit()
+        result = await db.execute(
+            select(TransactionModel).where(TransactionModel.account_id == account_id)
+        )
+        transactions = result.scalars().all()
+        assert len(transactions) == 1
+        assert transactions[0].transaction_id == "fake-tx-1"
+    finally:
+        # Cleanup runs even if an assertion above failed. Transactions first
+        # and committed separately: no ORM relationship is mapped between
+        # TransactionModel/BankAccountModel, so a single flush mixing both
+        # deletes has no dependency info to order them correctly and can try
+        # to delete the account first.
+        result = await db.execute(
+            select(TransactionModel).where(TransactionModel.account_id == account_id)
+        )
+        for transaction in result.scalars().all():
+            await db.delete(transaction)
+        await db.commit()
+        account = await db.get(BankAccountModel, account_id)
+        if account is not None:
+            await db.delete(account)
+        if connection_id is not None:
+            connection_row = await db.get(BankConnectionModel, connection_id)
+            if connection_row is not None:
+                await db.delete(connection_row)
+        await db.commit()
 
 
 @pytest.mark.asyncio
@@ -177,27 +200,39 @@ async def test_create_bank_connection_carries_customizations_across_reconnect_by
     # Enable Banking mints a new account uid on every fresh authorization —
     # confirmed live this session, not an assumption — even for the same
     # physical account (same iban). Rename/reorder must survive that.
-    first_connection = await create_bank_connection(
-        db, user_id=str(test_user.user_id), session=_fake_session("first-uid", "NO9999999999999")
-    )
-    first_account = await db.get(BankAccountModel, "first-uid")
-    assert first_account is not None
-    first_account.display_name = "My Custom Name"
-    first_account.sort_order = 3
-    await db.commit()
+    first_id, second_id = "first-uid", "second-uid"
+    first_connection_id = second_connection_id = None
+    try:
+        first_connection = await create_bank_connection(
+            db, user_id=str(test_user.user_id), session=_fake_session(first_id, "NO9999999999999")
+        )
+        first_connection_id = first_connection.connection_id
+        first_account = await db.get(BankAccountModel, first_id)
+        assert first_account is not None
+        first_account.display_name = "My Custom Name"
+        first_account.sort_order = 3
+        await db.commit()
 
-    second_connection = await create_bank_connection(
-        db, user_id=str(test_user.user_id), session=_fake_session("second-uid", "NO9999999999999")
-    )
-    second_account = await db.get(BankAccountModel, "second-uid")
+        second_connection = await create_bank_connection(
+            db, user_id=str(test_user.user_id), session=_fake_session(second_id, "NO9999999999999")
+        )
+        second_connection_id = second_connection.connection_id
+        second_account = await db.get(BankAccountModel, second_id)
 
-    assert second_account is not None
-    assert second_account.display_name == "My Custom Name"
-    assert second_account.sort_order == 3
-
-    # cleanup
-    await db.delete(first_account)
-    await db.delete(second_account)
-    await db.delete(await db.get(BankConnectionModel, first_connection.connection_id))
-    await db.delete(await db.get(BankConnectionModel, second_connection.connection_id))
-    await db.commit()
+        assert second_account is not None
+        assert second_account.display_name == "My Custom Name"
+        assert second_account.sort_order == 3
+    finally:
+        # Cleanup runs even if an assertion above failed, re-fetched fresh
+        # by known id rather than trusting variables an early failure may
+        # have skipped.
+        for account_id in (first_id, second_id):
+            account = await db.get(BankAccountModel, account_id)
+            if account is not None:
+                await db.delete(account)
+        for connection_id in (first_connection_id, second_connection_id):
+            if connection_id is not None:
+                connection_row = await db.get(BankConnectionModel, connection_id)
+                if connection_row is not None:
+                    await db.delete(connection_row)
+        await db.commit()
