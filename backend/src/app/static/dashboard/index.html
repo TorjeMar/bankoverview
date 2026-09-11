@@ -115,16 +115,6 @@
     </section>
   </sc-if>
 
-  <!-- ── REDIRECTING TO THE BANK ───────────────────────────── -->
-  <sc-if value="{{ isConnecting }}" hint-placeholder-val="{{ true }}">
-    <section style="max-width:720px;margin:0 auto;padding:96px 32px">
-      <div style="width:28px;height:28px;border:2px solid var(--color-divider);border-top-color:var(--color-accent);animation:bo-spin 0.9s linear infinite"></div>
-      <h1 style="margin:28px 0 0;font-size:36px;line-height:1.05;letter-spacing:-0.02em">Sending you to your bank…</h1>
-      <p style="margin:16px 0 0;color:var(--color-neutral-800);font-size:15px;line-height:1.5">Approve read-only access in the bank's own window. You'll land back here when it's done.</p>
-      <div style="margin-top:28px;border:1px solid var(--color-divider);padding:14px;background:var(--color-surface);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all;color:var(--color-neutral-800)">{{ authUrl }}</div>
-    </section>
-  </sc-if>
-
   <!-- ── SYNCING ───────────────────────────────────────────── -->
   <sc-if value="{{ isSyncing }}" hint-placeholder-val="{{ true }}">
     <section style="max-width:1120px;margin:0 auto;padding:72px 32px">
@@ -440,6 +430,13 @@
   <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
     <div style="position:fixed;left:0;right:0;top:0;height:2px;background:var(--color-accent);animation:bo-fade .2s ease"></div>
   </sc-if>
+
+  <sc-if value="{{ showSyncActivity }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position:fixed;right:20px;bottom:20px;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;background:var(--color-text);color:var(--color-bg);box-shadow:0 8px 24px rgba(0,0,0,0.24);animation:bo-fade .25s ease">
+      <span style="width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);border-top-color:currentColor;animation:bo-spin .7s linear infinite"></span>
+      <span style="font-size:13px;font-weight:600">Refreshing cached data…</span>
+    </div>
+  </sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{
@@ -467,6 +464,11 @@ function counterpartyOf(text) {
     .trim() || 'Ukjent';
 }
 
+// `sc-if` nested inside `<svg>` silently drops its content — no error, no
+// warning (support.js has no SVG-namespace handling at all). Anything
+// conditionally shown inside a chart's `<svg>` (like the hover tooltip)
+// must be a plain HTML overlay `<div>` positioned over the chart instead;
+// only `sc-for` is safe to nest inside `<svg>` here (used for axis labels).
 function buildChart(series, h, padT, padB) {
   const n = series.length;
   const x0 = 64, x1 = 950;
@@ -552,9 +554,9 @@ function seriesFor(txs, endBalance, days) {
 class Component extends DCLogic {
   state = {
     screen: 'login', busy: false, accounts: [], selected: null,
-    query: '', dir: 'all', period: 30, authUrl: '', syncStep: 0,
+    query: '', dir: 'all', period: 30, syncStep: 0,
     error: null, connection: null, connections: [], user: null, currencyTotals: [], partialFailures: [],
-    callbackResult: null, syncMessage: null, renameDraft: '', renameSaved: false, draggingUid: null,
+    callbackResult: null, syncMessage: null, syncActivity: false, renameDraft: '', renameSaved: false, draggingUid: null,
     hoverChart: null, hoverPoint: null, hovering: false,
   };
 
@@ -746,7 +748,10 @@ class Component extends DCLogic {
   onChartLeave = () => this.setState({ hovering: false });
 
   onRequestSync = async () => {
-    this.setState({ busy: true, syncMessage: null });
+    // syncActivity is separate from busy: busy is per-screen (top loading
+    // bar), but this indicator has to survive navigating away and back —
+    // the whole point is showing it's still working from Overview too.
+    this.setState({ busy: true, syncActivity: true, syncMessage: null });
     try {
       const result = await this.api.sync();
       // Stay on whatever screen the user triggered this from — the
@@ -762,6 +767,8 @@ class Component extends DCLogic {
       this.syncMessageTimer = setTimeout(() => this.setState({ syncMessage: null }), 6000);
     } catch (e) {
       this.setState({ busy: false, error: { kind: 'fetch', detail: e.detail || e.message } });
+    } finally {
+      this.setState({ syncActivity: false });
     }
   };
 
@@ -851,7 +858,7 @@ class Component extends DCLogic {
 
     return {
       isAuthed: ['dashboard', 'transactions', 'account', 'settings'].includes(screen),
-      isLogin: screen === 'login', isConnect: screen === 'connect', isConnecting: screen === 'connecting',
+      isLogin: screen === 'login', isConnect: screen === 'connect',
       isSyncing: screen === 'syncing', isDashboard: screen === 'dashboard',
       isTransactions: screen === 'transactions', isAccount: screen === 'account',
       isSettings: screen === 'settings', isError: screen === 'error',
@@ -898,7 +905,7 @@ class Component extends DCLogic {
         net: signed(Number(c.net)),
       })),
       hasPartialFailures: s.partialFailures.length > 0,
-      hasSyncMessage: !!s.syncMessage, syncMessage: s.syncMessage || '',
+      hasSyncMessage: !!s.syncMessage, syncMessage: s.syncMessage || '', showSyncActivity: s.syncActivity,
       partialFailureText: s.partialFailures.length + ' account sync' + (s.partialFailures.length === 1 ? '' : 's') + ' failed; successful accounts remain available.',
       hasCallbackNotice: Boolean(s.callbackResult),
       callbackNotice: callbackNotices[s.callbackResult] || '',
@@ -961,7 +968,6 @@ class Component extends DCLogic {
       lastSync: accounts.reduce((latest, a) => !a.freshness ? latest : (!latest || a.freshness > latest ? a.freshness : latest), ''),
       connectedOn: s.connection ? new Date(s.connection.created_at).toLocaleDateString('nb-NO') : '',
       validUntil: s.connection && s.connection.valid_until ? new Date(s.connection.valid_until).toLocaleString('nb-NO') : 'not supplied',
-      authUrl: s.authUrl,
     };
   }
 }
