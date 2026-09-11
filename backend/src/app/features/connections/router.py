@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import requests
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -33,6 +33,7 @@ from app.integrations.enable_banking.client import (
     exchange_authorization_code,
     list_aspsps,
 )
+from app.integrations.enable_banking.exceptions import to_enable_banking_http_exception
 
 router = APIRouter(
     prefix="/connections",
@@ -59,7 +60,7 @@ async def get_bank_connection(
 
 
 async def get_connection_by_id(
-    connection_id: str,
+    connection_id: UUID,
     current_user: Annotated[UserSession, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> BankConnectionModel:
@@ -81,10 +82,7 @@ def list_banks(
     try:
         aspsps = list_aspsps(settings, country=settings.aspsp_country)
     except requests.RequestException as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to list banks: {exc}",
-        ) from exc
+        raise to_enable_banking_http_exception(exc) from exc
 
     return [
         BankOption(name=a["name"], country=a.get("country", settings.aspsp_country))
@@ -126,10 +124,7 @@ def start_auth(
         )
     except requests.RequestException as exc:
         pending_authorizations.pop(state, None)
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to initiate bank authorization: {exc}",
-        ) from exc
+        raise to_enable_banking_http_exception(exc) from exc
     except ValueError as exc:
         pending_authorizations.pop(state, None)
         raise HTTPException(

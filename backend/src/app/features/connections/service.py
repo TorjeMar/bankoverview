@@ -1,8 +1,8 @@
 import asyncio
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 import requests
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -15,6 +15,8 @@ from app.features.connections.schemas import BankConnectionResponse
 from app.integrations.enable_banking.client import delete_enable_banking_session
 from app.integrations.enable_banking.exceptions import to_enable_banking_http_exception
 from app.integrations.enable_banking.schemas import CreatedEnableBankingSession
+
+logger = logging.getLogger(__name__)
 
 # Enable Banking's `date_from` docs don't state a default or a cap when
 # omitted — DNB was observed defaulting to ~30 days. Ask further back
@@ -94,12 +96,28 @@ async def backfill_bank_connection(account_uids: list[str]) -> None:
                     account_db, account_uid, since=date.today() - BACKFILL_HISTORY
                 )
                 await sync_account_balance(account_db, account_uid)
-            except (requests.RequestException, ValidationError):
+            except Exception:
+                # Anything here — an Enable Banking network/validation
+                # failure, or a malformed upstream payload tripping the
+                # unguarded dict access in to_transaction_model — has to
+                # still mark the account "error" and get logged. This runs
+                # inside a BackgroundTasks job nothing awaits; a narrower
+                # except would let the account sit stuck on a stale/None
+                # sync_status with no signal to the dashboard at all.
+                logger.exception("Backfill failed for account %s", account_uid)
                 await accounts_repository.update_account_balance(
                     account_db, account_uid, sync_status="error"
                 )
 
-    await asyncio.gather(*(sync_one(uid) for uid in account_uids))
+    results = await asyncio.gather(
+        *(sync_one(uid) for uid in account_uids), return_exceptions=True
+    )
+    for account_uid, result in zip(account_uids, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.error(
+                "sync_one raised past its own try/except for account %s", account_uid,
+                exc_info=result,
+            )
 
 async def revoke_bank_connection(db: AsyncSession, connection: BankConnectionModel) -> None:
     try:
