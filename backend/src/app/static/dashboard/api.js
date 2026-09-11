@@ -40,10 +40,6 @@
     overview: (days) => req('/overview?days=' + encodeURIComponent(days || 30)),
     sync: () => req('/sync', { method: 'POST' }),
     logout: () => req('/logout', { method: 'POST' }),
-    listAccounts: () => req('/accounts'),
-    getAccount: (id) => req('/accounts/' + encodeURIComponent(id)),
-    getBalances: (id) => req('/accounts/' + encodeURIComponent(id) + '/balances'),
-    getTransactions: (id) => req('/accounts/' + encodeURIComponent(id) + '/transactions'),
     renameAccount: (id, displayName) => req('/accounts/' + encodeURIComponent(id), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

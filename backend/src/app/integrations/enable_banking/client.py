@@ -7,11 +7,8 @@ import requests
 from app.core.config import Settings
 from app.integrations.enable_banking.schemas import (
     CreatedEnableBankingSession,
-    EnableBankingAccount,
     EnableBankingBalance,
-    EnableBankingTransaction,
     EnableBankingTransactions,
-    RetrievedEnableBankingSession,
 )
 
 
@@ -123,34 +120,6 @@ def exchange_authorization_code(
         response.json()
     )
 
-def retrieve_enable_banking_session(
-    settings: Settings,
-    session_id: str,
-) -> RetrievedEnableBankingSession:
-    response = requests.get(
-        f"{get_api_base_url(settings)}/sessions/{session_id}",
-        headers=create_enable_banking_headers(settings),
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    return RetrievedEnableBankingSession.model_validate(
-        response.json()
-    )
-
-def retrieve_account_details(
-    settings: Settings,
-    account_id: str,
-) -> EnableBankingAccount:
-    response = requests.get(
-        f"{get_api_base_url(settings)}/accounts/{account_id}/details",
-        headers=create_enable_banking_headers(settings),
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    return EnableBankingAccount.model_validate(response.json())
-
 def retrieve_account_balances(
     settings: Settings,
     account_id: str,
@@ -182,23 +151,6 @@ def retrieve_account_transactions(
     response.raise_for_status()
     
     return EnableBankingTransactions.model_validate(response.json())
-
-def retrieve_account_transaction(
-    settings: Settings,
-    account_id: str,
-    transaction_id: str,
-) -> EnableBankingTransaction:
-    print(f"Retrieving transaction {transaction_id} for account {account_id}")
-    response = requests.get(
-        f"{get_api_base_url(settings)}/accounts/{account_id}/transactions/{transaction_id}",
-        headers=create_enable_banking_headers(settings),
-        timeout=30,
-    )
-    response.raise_for_status()
-
-    print("response:", response.json())
-    
-    return EnableBankingTransaction.model_validate(response.json())
 
 def delete_enable_banking_session(settings: Settings, session_id: str) -> None:
     response = requests.delete(

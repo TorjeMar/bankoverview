@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,35 +74,6 @@ class EnableBankingTransactions(BaseModel):
     transactions: list[dict[str, Any]] | None = None
     continuation_key: str | None = None
 
-class EnableBankingTransaction(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    entry_reference: str
-    merchant_category_code: str | None = None
-    transaction_amount: dict[str, Any]
-    creditor: dict[str, Any] | None = None
-    creditor_account: dict[str, Any] | None = None
-    creditor_agent: dict[str, Any] | None = None
-    debtor: dict[str, Any] | None = None
-    debtor_account: dict[str, Any] | None = None
-    debtor_agent: dict[str, Any] | None = None
-    bank_transaction_code: dict[str, Any] | None = None
-    credit_debit_indicator: str | None = None
-    status: str | None = None
-    booking_date: date | None = None
-    value_date: date | None = None
-    transaction_date: date | None = None
-    balance_after_transaction: dict[str, Any] | None = None
-    refrence_number: str | None = None
-    refrence_number_schema: str | None = None
-    remittance_information: list | None = None
-    debtor_account_additional_identification: dict[str, Any] | None = None
-    creditor_account_additional_identification: dict[str, Any] | None = None
-    exchange_rate: dict[str, Any] | None = None
-    note: str | None = None
-    transaction_id: str | None = None
-
-
 class CreatedEnableBankingSession(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -110,11 +81,3 @@ class CreatedEnableBankingSession(BaseModel):
     accounts: list[EnableBankingAccount] = Field(default_factory=list)
     aspsp: dict[str, Any] | None = None
     access: EnableBankingAccess | None = None
-
-
-class RetrievedEnableBankingSession(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    status: str | None = None
-    accounts: list[str] = Field(default_factory=list)
-    aspsp: dict[str, Any] | None = None
